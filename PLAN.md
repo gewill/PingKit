@@ -1,6 +1,6 @@
 # Swift Ping 库规划（PingKit）
 
-> 状态：规划阶段，未开始开发。日期：2026-07-12
+> 状态：开发中，M1–M4 已完成，M5 待实施。日期：2026-07-12
 
 ## 1. 背景与现有生态
 
@@ -40,6 +40,7 @@ socket(AF_INET,  SOCK_DGRAM, IPPROTO_ICMP)    // IPv4
 - **Linux 权限**：免特权 ICMP 需要 `net.ipv4.ping_group_range` sysctl 覆盖进程 gid（多数发行版默认不开），否则需要 CAP_NET_RAW。Linux 支持列为 best-effort。
 - **App Sandbox（macOS）**：需要 `com.apple.security.network.client`（发）和 `com.apple.security.network.server`（收）entitlement，README 要写清楚。
 - **校验和**：IPv4 ICMP 校验和由库计算。
+- **XNU 会改写 ICMP 差错报文（已实测踩坑）**：内核在把 type 3/11 差错报文投递给 socket 前，会原地把内嵌（quoted）IP 头的 `ip_len` 转成主机字节序（老 BSD 遗留行为），导致整个 ICMP 报文的校验和无法按收到的字节验证。因此校验和只对 echo reply/request 验证；差错报文靠"内嵌 identifier+sequence 匹配在途 probe"来鉴别。外层 IP 头的 `ip_len` 同样被改成主机序并减去了头长，不要依赖该字段。
 - **解析不可信主机的回包**：所有字节到结构体的解析必须做边界检查，不用 `unsafeBitCast` 一把梭（SwiftyPing 的已知弱点）。
 
 ## 4. API 设计草案
@@ -51,7 +52,7 @@ Swift 6，公开值类型遵循 `Sendable`，核心是 actor + AsyncSequence。`
 let reply = try await Pinger.ping("example.com")   // -> PingReply(rtt:ttl:from:seq:)
 
 // 连续 ping，AsyncSequence 风格
-let pinger = try Pinger(host: "1.1.1.1", configuration: .init(
+let pinger = Pinger(host: "1.1.1.1", configuration: .init(
     interval: .seconds(1),
     timeout: .seconds(2),
     count: .unlimited,          // 或 .times(5)
@@ -96,11 +97,11 @@ Ping/
 
 ## 6. 里程碑
 
-1. **M1 协议层（纯逻辑）**：ICMP echo 包编码/解码、checksum、IPv4 头剥离。全部纯函数 + 单元测试（含畸形包 fuzz 样例）。
-2. **M2 IPv4 单发**：socket 封装、DispatchSource 收包、`Pinger.ping(_:)` 一次性 API 在 macOS 跑通；ping-cli 出雏形。
-3. **M3 连续 ping**：AsyncSequence、interval/timeout/count、序号匹配与去重（重复/乱序回包）、统计。
-4. **M4 生命周期与错误语义**：Task cancellation、迭代终止、显式 `stop()`、ICMPv4 差错报文映射。
-5. **M5 打磨**：iOS 验证、Linux 适配（可降级）、DocC 文档、CI（macOS + Linux）。
+1. ✅ **M1 协议层（纯逻辑）**：ICMP echo 包编码/解码、checksum、IPv4 头剥离。全部纯函数 + 单元测试（含畸形包 fuzz 样例）。
+2. ✅ **M2 IPv4 单发**：socket 封装、DispatchSource 收包、`Pinger.ping(_:)` 一次性 API 在 macOS 跑通；ping-cli 出雏形。
+3. ✅ **M3 连续 ping**：AsyncSequence、interval/timeout/count、序号匹配与去重（重复/乱序回包）、统计。
+4. ✅ **M4 生命周期与错误语义**：Task cancellation、迭代终止、显式 `stop()`、ICMPv4 差错报文映射。
+5. ⏳ **M5 打磨**：iOS 验证、Linux 适配（可降级）、DocC 文档、CI（macOS + Linux）。
 
 IPv6 作为独立后续里程碑：仅在出现真实需求后，补充 ICMPv6 协议、hop-limit ancillary data、双栈地址选择策略和对应平台测试，不影响首版交付。
 
