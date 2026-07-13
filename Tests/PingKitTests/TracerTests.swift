@@ -147,7 +147,7 @@ private func makeTracer(configuration: TracerouteConfiguration, socket: MockPing
 
         for try await _ in tracer.hops {}
 
-        await #expect(throws: PingError.responsesAlreadyConsumed) {
+        await #expect(throws: PingError.sequenceAlreadyConsumed) {
             for try await _ in tracer.hops {}
         }
     }

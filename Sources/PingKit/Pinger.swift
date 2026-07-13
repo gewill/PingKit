@@ -14,14 +14,14 @@
 ///
 /// Lifecycle semantics:
 /// - `responses` supports a **single consumer**; a second subscription throws
-///   `PingError.responsesAlreadyConsumed`.
+///   `PingError.sequenceAlreadyConsumed`.
 /// - Cancelling the consuming task stops sending, closes the socket, and ends
 ///   the sequence.
 /// - Breaking out of the loop without cancelling does **not** stop the pinger
 ///   by itself in all cases — call `stop()` (idempotent) when done early.
 public actor Pinger {
-    public typealias SocketFactory = @Sendable (IPv4Endpoint) throws -> any PingSocket
-    public typealias HostResolver = @Sendable (String) async throws -> IPv4Endpoint
+    typealias SocketFactory = @Sendable (IPv4Endpoint) throws -> any PingSocket
+    typealias HostResolver = @Sendable (String) async throws -> IPv4Endpoint
 
     private enum State {
         case idle
@@ -41,6 +41,8 @@ public actor Pinger {
     private var socket: (any PingSocket)?
     private var continuation: AsyncThrowingStream<PingResponse, any Error>.Continuation?
     private var sendTask: Task<Void, Never>?
+    private var receiveTask: Task<Void, Never>?
+    private var receiveContinuation: AsyncStream<SocketDatagram>.Continuation?
     private var pending: [UInt16: Probe] = [:]
 
     private var transmitted = 0
@@ -78,6 +80,7 @@ public actor Pinger {
 
     deinit {
         sendTask?.cancel()
+        receiveTask?.cancel()
         socket?.close()
     }
 
@@ -141,7 +144,7 @@ public actor Pinger {
 
     func claimAndStart() async throws -> AsyncThrowingStream<PingResponse, any Error> {
         try configuration.validate()
-        guard !claimed else { throw PingError.responsesAlreadyConsumed }
+        guard !claimed else { throw PingError.sequenceAlreadyConsumed }
         claimed = true
 
         if case .stopped = state { return Self.finishedStream() }
@@ -165,9 +168,17 @@ public actor Pinger {
         do {
             let socket = try socketFactory(endpoint)
             self.socket = socket
+            let (datagrams, receiveContinuation) = AsyncStream<SocketDatagram>.makeStream()
+            self.receiveContinuation = receiveContinuation
             try socket.activate { [weak self] datagram, receivedAt in
-                guard let self else { return }
-                Task { await self.handleDatagram(datagram, receivedAt: receivedAt) }
+                guard self != nil else { return }
+                receiveContinuation.yield(SocketDatagram(bytes: datagram, receivedAt: receivedAt))
+            }
+            receiveTask = Task { [weak self] in
+                for await datagram in datagrams {
+                    guard let self else { return }
+                    await self.handleDatagram(datagram.bytes, receivedAt: datagram.receivedAt)
+                }
             }
         } catch {
             stopInternal()
@@ -322,6 +333,10 @@ public actor Pinger {
         state = .stopped
         sendTask?.cancel()
         sendTask = nil
+        receiveContinuation?.finish()
+        receiveContinuation = nil
+        receiveTask?.cancel()
+        receiveTask = nil
         for probe in pending.values {
             probe.timeoutTask.cancel()
         }

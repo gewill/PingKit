@@ -158,3 +158,36 @@ func makePinger(configuration: PingConfiguration, socket: MockPingSocket) -> Pin
         socketFactory: { _ in socket },
         resolver: { _ in IPv4Endpoint(127, 0, 0, 1) })
 }
+
+/// Holds replies until every request is pending, then delivers one burst in
+/// socket callback order. This exposes ordering loss between the socket queue
+/// and the actor without depending on network timing.
+final class BurstReplySocket: PingSocket, @unchecked Sendable {
+    private let lock = NSLock()
+    private let replyCount: Int
+    private var handler: (@Sendable ([UInt8], MonotonicTimestamp) -> Void)?
+    private var requests: [[UInt8]] = []
+
+    init(replyCount: Int) {
+        self.replyCount = replyCount
+    }
+
+    func activate(receiveHandler: @escaping @Sendable ([UInt8], MonotonicTimestamp) -> Void) throws {
+        lock.withLock { handler = receiveHandler }
+    }
+
+    func send(_ datagram: [UInt8]) throws {
+        let delivery = lock.withLock { () -> ((@Sendable ([UInt8], MonotonicTimestamp) -> Void), [[UInt8]])? in
+            requests.append(datagram)
+            guard requests.count == replyCount, let handler else { return nil }
+            return (handler, requests)
+        }
+        guard let (handler, requests) = delivery else { return }
+        for request in requests {
+            handler(Fixtures.replyDatagram(forRequest: request), MonotonicTimestamp.now())
+        }
+    }
+
+    func setTimeToLive(_ ttl: Int) throws {}
+    func close() {}
+}

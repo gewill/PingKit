@@ -1,6 +1,6 @@
 # Swift Ping 库规划（PingKit）
 
-> 状态：开发中，M1–M4 已完成，M5 待实施。日期：2026-07-12
+> 状态：M1–M7 已完成，当前版本 0.2.0。更新日期：2026-07-13
 
 ## 1. 背景与现有生态
 
@@ -37,7 +37,7 @@ socket(AF_INET,  SOCK_DGRAM, IPPROTO_ICMP)    // IPv4
 
 - **macOS/iOS IPv4 收包**：SOCK_DGRAM ICMP socket 收到的数据**包含完整 IP 头**（和 SOCK_RAW 一样），需要先按 IHL 跳过 IP 头再解析 ICMP。TTL 从 IPv4 头读取。
 - **Identifier 字段**：Darwin 上保留应用设置的 identifier；Linux 上内核会把 ICMP id 重写为 socket 的"端口号"，匹配回包时不能依赖自己写入的 id，要以内核为准。
-- **Linux 权限**：免特权 ICMP 需要 `net.ipv4.ping_group_range` sysctl 覆盖进程 gid（多数发行版默认不开），否则需要 CAP_NET_RAW。Linux 支持列为 best-effort。
+- **Linux 权限**：免特权 ICMP 需要 `net.ipv4.ping_group_range` sysctl 覆盖进程 gid（多数发行版默认不开），否则需要 CAP_NET_RAW。IPv4 Echo 已纳入持续 CI；Traceroute 中间跳仍受 error queue 限制。
 - **App Sandbox（macOS）**：需要 `com.apple.security.network.client`（发）和 `com.apple.security.network.server`（收）entitlement，README 要写清楚。
 - **校验和**：IPv4 ICMP 校验和由库计算。
 - **XNU 会改写 ICMP 差错报文（已实测踩坑）**：内核在把 type 3/11 差错报文投递给 socket 前，会原地把内嵌（quoted）IP 头的 `ip_len` 转成主机字节序（老 BSD 遗留行为），导致整个 ICMP 报文的校验和无法按收到的字节验证。因此校验和只对 echo reply/request 验证；差错报文靠"内嵌 identifier+sequence 匹配在途 probe"来鉴别。外层 IP 头的 `ip_len` 同样被改成主机序并减去了头长，不要依赖该字段。
@@ -93,7 +93,7 @@ Ping/
 └── Tests/PingKitTests/
 ```
 
-首版平台目标：macOS 13+ / iOS 16+（为了 `Duration`/Swift 并发）。Linux 为 best-effort；IPv6、tvOS、watchOS、visionOS 暂不承诺。
+首版平台目标：macOS 13+ / iOS 16+（为了 `Duration`/Swift 并发）。Linux 的 IPv4 Echo 已持续验证，Traceroute 为 best-effort；IPv6、tvOS、watchOS、visionOS 暂不承诺。
 
 ## 6. 里程碑
 
@@ -101,15 +101,15 @@ Ping/
 2. ✅ **M2 IPv4 单发**：socket 封装、DispatchSource 收包、`Pinger.ping(_:)` 一次性 API 在 macOS 跑通；ping-cli 出雏形。
 3. ✅ **M3 连续 ping**：AsyncSequence、interval/timeout/count、序号匹配与去重（重复/乱序回包）、统计。
 4. ✅ **M4 生命周期与错误语义**：Task cancellation、迭代终止、显式 `stop()`、ICMPv4 差错报文映射。
-5. ✅ **M5 CI 与 Linux 验证**（macOS + Linux 双平台全绿；Linux 在特权容器内跑通了真实 loopback 集成测试。Glibc 分支仅需一处修正：变参 `fcntl` 不可从 Swift 调用，`O_NONBLOCK` 限定 Darwin）
-   - GitHub Actions 两个 job：
+5. ✅ **M5 CI 与 Linux 验证**（macOS + Linux 双平台全绿；Linux 在特权容器内跑通真实 loopback 集成测试。Glibc 分支已完成条件编译修正：变参 `fcntl` 不可从 Swift 调用，因此 `O_NONBLOCK` 仅在 Darwin 设置）
+   - GitHub Actions 三个 job：
      - macOS：`swift build && swift test`（集成测试在 runner 上可直接跑 loopback）。
      - Linux：ubuntu runner + Swift 6 工具链；先 `sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"` 打开免特权 ICMP，再 `swift test`。这样 Linux 从"best-effort 未编译验证"直接升级为 CI 持续验证。
-     - Glibc 分支从未实际编译过，预期要修一轮条件编译小错（SOCK_DGRAM 枚举、常量类型差异）。
+     - Glibc 分支已在 CI 编译并测试，覆盖 `SOCK_DGRAM` 枚举和常量类型差异。
    - 顺手加 LICENSE（MIT）和 README badge。
-6. ✅ **M6 发布 v0.1.0**（tag `0.1.0` + GitHub Release 已发；DocC catalog 本地构建通过；`.spi.yml` 就绪。**遗留**：Swift Package Index 收录需要仓库先转 public 并到 swiftpackageindex.com/add-a-package 提交，由仓库所有者操作）
+6. ✅ **M6 首次发布**（`0.1.0` 与 GitHub Release 已发布；DocC catalog 本地构建通过；`.spi.yml` 就绪。当前最新版本为 `0.2.0`。**遗留**：Swift Package Index 收录需要仓库先转 public 并到 swiftpackageindex.com/add-a-package 提交，由仓库所有者操作）
 7. ✅ **M7 iOS 验证**
-   - ✅ CI 加 iOS 门禁：`generic/platform=iOS` 设备目标编译 + iOS 模拟器全量测试（32 个测试含 loopback 集成测试全部通过，证明 ICMP dgram socket 在 iOS 运行时可用）。
+   - ✅ CI 加 iOS 门禁：`generic/platform=iOS` 设备目标编译 + iOS 模拟器全量测试（含 loopback 集成测试，证明 ICMP dgram socket 在 iOS 运行时可用）。
    - ✅ 最小 SwiftUI demo App（`Examples/PingDemo`，xcodegen 生成工程，含 `NSLocalNetworkUsageDescription`），模拟器构建通过。
    - 真机实测结果（2026-07-13，iPhone 真机）：
      - ✅ Wi-Fi / 蜂窝下 ping 外网正常。
@@ -119,17 +119,27 @@ Ping/
 
 IPv6 作为独立后续里程碑：仅在出现真实需求后，补充 ICMPv6 协议、hop-limit ancillary data、双栈地址选择策略和对应平台测试，不影响首版交付。
 
-## 6.1 Backlog（有价值但不排期）
+## 6.1 0.2.0 已发布能力
 
 - ✅ **traceroute 模式**（已实现，进 0.2.0）：`Tracer` actor + `hops` AsyncSequence，`IP_TTL` 逐跳探测，Time Exceeded/Echo Reply/Unreachable 三类终止语义；CLI `ping-cli trace`。实测 8.8.8.8 十五跳路径正确。注意：Linux 内核把 ICMP 差错投递到 socket error queue（MSG_ERRQUEUE），当前未读取，Linux 上中间跳显示为超时，终点仍可达——如需完整 Linux 支持需实现 error queue 读取，暂记 backlog。
-- ✅ **RTT 精度增强**（已实现，进 0.2.0）：Darwin 用 `SO_TIMESTAMP_MONOTONIC` 内核收包时间戳（`SCM_TIMESTAMP_MONOTONIC` cmsg，mach ticks × timebase 换算 ns），与发送侧 `CLOCK_UPTIME_RAW` 同基准；Linux 统一为 `CLOCK_MONOTONIC` 读取时刻兜底。公开类型 `MonotonicTimestamp` 取代 `ContinuousClock.Instant` 贯穿 socket 协议。实测 loopback：唤醒延迟约 0.18ms 被消除，平均 RTT 0.34ms → 0.10ms，stddev 0.13 → 0.02ms。
-- **收包保序**：目前 socket 回调用无序 unstructured Task 投递进 actor，突发回包理论上可能乱序进入流（间隔式 ping 实际影响可忽略）。如需严格保序，可改为 AsyncStream 管道单任务消费。已知限制，先记录。
+- ✅ **RTT 精度增强**（已实现，进 0.2.0）：Darwin 用 `SO_TIMESTAMP_MONOTONIC` 内核收包时间戳（`SCM_TIMESTAMP_MONOTONIC` cmsg，mach ticks × timebase 换算 ns），与发送侧 `CLOCK_UPTIME_RAW` 同基准；Linux 统一为 `CLOCK_MONOTONIC` 读取时刻兜底。`MonotonicTimestamp` 取代 `ContinuousClock.Instant` 贯穿 socket 协议。实测 loopback：唤醒延迟约 0.18ms 被消除，平均 RTT 0.34ms → 0.10ms，stddev 0.13 → 0.02ms。
+
+## 6.2 main 分支待发布增强
+
+- **收包保序**：socket 回调先进入单一 `AsyncStream` 管道，再由一个任务依次投递给 `Pinger` / `Tracer` actor，避免 unstructured Task 竞争导致乱序；突发 100 个回包的回归测试覆盖该行为。
+- **公开 API 收敛**：仅用于内部测试注入的 `PingSocket`、`SocketFactory`、`HostResolver` 和 `MonotonicTimestamp` 不再暴露为公共契约。
+- **单消费者错误统一**：`PingError.sequenceAlreadyConsumed` 同时适用于 `Pinger.responses` 与 `Tracer.hops`，不再携带错误的 Pinger 专属文案。
+
+## 6.3 Backlog（有价值但不排期）
+
+- **Linux Traceroute 完整中间跳**：读取 ICMP socket error queue（`MSG_ERRQUEUE`）。
+- **可插拔 Socket 后端（0.4 候选）**：先观察 0.3 的公开 API 收敛反馈；仅当出现自定义传输、外部 Mock、`SOCK_RAW` 或其他后端的真实需求时，重新设计并开放稳定的注入 API，不直接恢复当前内部协议。进入 0.4 的前置条件是至少一个可复现的外部使用场景，并明确生命周期、并发安全和错误语义；没有真实需求则继续留在 Backlog。
 - **`Pinger` 复用语义**：当前一个实例一次运行；如用户反馈需要 reset/restart，再评估。
 
 ## 7. 测试策略
 
 - 协议层纯函数直接单测（黄金样本：用 tcpdump 抓真实 ping 包做 fixture）。
-- Socket 层抽 `PingSocketProtocol`，用 mock 注入回包/超时/差错报文，测状态机。
+- Socket 层通过内部 `PingSocket` 协议，用 mock 注入回包/超时/差错报文，测状态机；若未来开放注入 API，需按 0.4 候选项重新设计公共契约。
 - 集成测试 ping `127.0.0.1`；测试前先探测 ICMP datagram socket 能力，不支持时明确 skip，不能把权限问题误判为功能回归。外网目标只放本地手动测试。
 - 生命周期测试覆盖 Task cancellation、提前退出迭代、显式 `stop()`、重复关闭和第二消费者接入，验证后台发送任务与 socket 均被释放。
 

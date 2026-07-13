@@ -19,10 +19,10 @@ Set your signing team, then run on a device.
 - **LAN host** (e.g. your router): the iOS local network permission prompt
   should appear on first ping; after granting, replies arrive.
   Denying it makes sends fail or time out.
-- **Suspend/resume**: start an unlimited ping, background the app for a
-  minute, return. Expected: no events while suspended, then timeouts/replies
-  resume; the socket keeps working. Note the observed behavior in
-  `PLAN.md` §3 if it differs.
+- **Backgrounding**: start an unlimited ping, then background the app.
+  Expected: the demo immediately stops the session. iOS does not promise that
+  a backgrounded process will survive, so return to the app and start a new
+  session instead of attempting to resume the old socket.
 
   ⚠️ Run this test **detached from Xcode** (launch from the Home Screen):
   with the debugger attached, iOS never suspends the app, so it keeps

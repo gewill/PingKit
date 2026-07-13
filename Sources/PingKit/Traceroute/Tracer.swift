@@ -35,6 +35,8 @@ public actor Tracer {
     private var socket: (any PingSocket)?
     private var continuation: AsyncThrowingStream<TracerouteHop, any Error>.Continuation?
     private var runTask: Task<Void, Never>?
+    private var receiveTask: Task<Void, Never>?
+    private var receiveContinuation: AsyncStream<SocketDatagram>.Continuation?
     private var awaiting: Awaiting?
 
     private struct Awaiting {
@@ -72,6 +74,7 @@ public actor Tracer {
 
     deinit {
         runTask?.cancel()
+        receiveTask?.cancel()
         socket?.close()
     }
 
@@ -104,7 +107,7 @@ public actor Tracer {
 
     func claimAndStart() async throws -> AsyncThrowingStream<TracerouteHop, any Error> {
         try configuration.validate()
-        guard !claimed else { throw PingError.responsesAlreadyConsumed }
+        guard !claimed else { throw PingError.sequenceAlreadyConsumed }
         claimed = true
 
         if case .stopped = state { return Self.finishedStream() }
@@ -126,9 +129,17 @@ public actor Tracer {
         do {
             let socket = try socketFactory(endpoint)
             self.socket = socket
+            let (datagrams, receiveContinuation) = AsyncStream<SocketDatagram>.makeStream()
+            self.receiveContinuation = receiveContinuation
             try socket.activate { [weak self] datagram, receivedAt in
-                guard let self else { return }
-                Task { await self.handleDatagram(datagram, receivedAt: receivedAt) }
+                guard self != nil else { return }
+                receiveContinuation.yield(SocketDatagram(bytes: datagram, receivedAt: receivedAt))
+            }
+            receiveTask = Task { [weak self] in
+                for await datagram in datagrams {
+                    guard let self else { return }
+                    await self.handleDatagram(datagram.bytes, receivedAt: datagram.receivedAt)
+                }
             }
         } catch {
             stopInternal()
@@ -268,6 +279,10 @@ public actor Tracer {
         state = .stopped
         runTask?.cancel()
         runTask = nil
+        receiveContinuation?.finish()
+        receiveContinuation = nil
+        receiveTask?.cancel()
+        receiveTask = nil
         if let awaiting {
             self.awaiting = nil
             awaiting.timeoutTask.cancel()

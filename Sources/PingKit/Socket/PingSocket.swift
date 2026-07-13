@@ -1,6 +1,6 @@
 /// Abstraction over the ICMP socket so `Pinger`'s state machine can be tested
 /// with a mock that injects replies, timeouts, and error packets.
-public protocol PingSocket: Sendable {
+protocol PingSocket: Sendable {
     /// Starts receiving. `receiveHandler` is invoked on an arbitrary internal
     /// queue with each raw datagram and its receive timestamp — the kernel's
     /// arrival timestamp where the platform provides one, otherwise the
@@ -16,4 +16,9 @@ public protocol PingSocket: Sendable {
 
     /// Stops receiving and releases the descriptor. Idempotent.
     func close()
+}
+
+struct SocketDatagram: Sendable {
+    let bytes: [UInt8]
+    let receivedAt: MonotonicTimestamp
 }

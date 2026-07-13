@@ -11,9 +11,9 @@ public enum PingError: Error, Sendable, Equatable {
     case socketCreationFailed(errno: Int32)
     case socketOptionFailed(errno: Int32)
     case sendFailed(errno: Int32)
-    /// `Pinger.responses` supports a single consumer; a second subscription
-    /// (or reuse after a failed start) gets this error. Create a new `Pinger`.
-    case responsesAlreadyConsumed
+    /// A ping or traceroute sequence supports a single consumer. A second
+    /// subscription (or reuse after a failed start) gets this error.
+    case sequenceAlreadyConsumed
     case timedOut
     case destinationUnreachable(code: UInt8)
     case timeToLiveExceeded
@@ -36,8 +36,8 @@ extension PingError: CustomStringConvertible {
             return "failed to set socket option: \(Self.describe(errno: errorNumber))"
         case .sendFailed(let errorNumber):
             return "failed to send echo request: \(Self.describe(errno: errorNumber))"
-        case .responsesAlreadyConsumed:
-            return "Pinger.responses supports a single consumer; create a new Pinger instead"
+        case .sequenceAlreadyConsumed:
+            return "this ping or traceroute sequence already has a consumer; create a new instance instead"
         case .timedOut:
             return "request timed out"
         case .destinationUnreachable(let code):

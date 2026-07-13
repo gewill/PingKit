@@ -44,7 +44,9 @@ jobs:
       options: --privileged
     strategy:
       matrix:
-        swift: ["6.1"]
+        # Keep the declared minimum toolchain continuously verified while also
+        # testing the newer Linux toolchain used by contributors.
+        swift: ["6.0", "6.1"]
     steps:
       - uses: actions/checkout@v4
       - name: Enable unprivileged ICMP sockets
