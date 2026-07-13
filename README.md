@@ -16,6 +16,28 @@ Design rationale and roadmap live in [PLAN.md](PLAN.md).
   apps need `com.apple.security.network.client` and
   `com.apple.security.network.server`.
 
+## Installation
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/gewill/Ping.git", from: "0.1.0"),
+],
+targets: [
+    .target(name: "MyTarget", dependencies: [
+        .product(name: "PingKit", package: "Ping"),
+    ]),
+]
+```
+
+PingKit has no runtime dependencies (the only package dependency is the
+DocC build plugin).
+
+> **Stability**: 0.x releases follow SemVer, but the public API may still
+> change between minor versions until 1.0.
+
+API documentation is a DocC catalog; build it locally with
+`swift package generate-documentation --target PingKit`.
+
 ## Usage
 
 ```swift
