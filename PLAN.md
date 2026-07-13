@@ -1,6 +1,6 @@
 # Swift Ping 库规划（PingKit）
 
-> 状态：M1–M7 已完成，当前版本 0.2.0。更新日期：2026-07-13
+> 状态：M1–M7 已完成，当前版本 0.3.0。更新日期：2026-07-13
 
 ## 1. 背景与现有生态
 
@@ -107,7 +107,7 @@ Ping/
      - Linux：ubuntu runner + Swift 6 工具链；先 `sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"` 打开免特权 ICMP，再 `swift test`。这样 Linux 从"best-effort 未编译验证"直接升级为 CI 持续验证。
      - Glibc 分支已在 CI 编译并测试，覆盖 `SOCK_DGRAM` 枚举和常量类型差异。
    - 顺手加 LICENSE（MIT）和 README badge。
-6. ✅ **M6 首次发布**（`0.1.0` 与 GitHub Release 已发布；DocC catalog 本地构建通过；`.spi.yml` 就绪。当前最新版本为 `0.2.0`。**遗留**：Swift Package Index 收录需要仓库先转 public 并到 swiftpackageindex.com/add-a-package 提交，由仓库所有者操作）
+6. ✅ **M6 首次发布**（`0.1.0` 与 GitHub Release 已发布；DocC catalog 本地构建通过；`.spi.yml` 就绪。当前最新版本为 `0.3.0`。**遗留**：Swift Package Index 收录需要仓库先转 public 并到 swiftpackageindex.com/add-a-package 提交，由仓库所有者操作）
 7. ✅ **M7 iOS 验证**
    - ✅ CI 加 iOS 门禁：`generic/platform=iOS` 设备目标编译 + iOS 模拟器全量测试（含 loopback 集成测试，证明 ICMP dgram socket 在 iOS 运行时可用）。
    - ✅ 最小 SwiftUI demo App（`Examples/PingDemo`，xcodegen 生成工程，含 `NSLocalNetworkUsageDescription`），模拟器构建通过。
@@ -124,11 +124,11 @@ IPv6 作为独立后续里程碑：仅在出现真实需求后，补充 ICMPv6 �
 - ✅ **traceroute 模式**（已实现，进 0.2.0）：`Tracer` actor + `hops` AsyncSequence，`IP_TTL` 逐跳探测，Time Exceeded/Echo Reply/Unreachable 三类终止语义；CLI `ping-cli trace`。实测 8.8.8.8 十五跳路径正确。注意：Linux 内核把 ICMP 差错投递到 socket error queue（MSG_ERRQUEUE），当前未读取，Linux 上中间跳显示为超时，终点仍可达——如需完整 Linux 支持需实现 error queue 读取，暂记 backlog。
 - ✅ **RTT 精度增强**（已实现，进 0.2.0）：Darwin 用 `SO_TIMESTAMP_MONOTONIC` 内核收包时间戳（`SCM_TIMESTAMP_MONOTONIC` cmsg，mach ticks × timebase 换算 ns），与发送侧 `CLOCK_UPTIME_RAW` 同基准；Linux 统一为 `CLOCK_MONOTONIC` 读取时刻兜底。`MonotonicTimestamp` 取代 `ContinuousClock.Instant` 贯穿 socket 协议。实测 loopback：唤醒延迟约 0.18ms 被消除，平均 RTT 0.34ms → 0.10ms，stddev 0.13 → 0.02ms。
 
-## 6.2 main 分支待发布增强
+## 6.2 0.3.0 已发布能力
 
-- **收包保序**：socket 回调先进入单一 `AsyncStream` 管道，再由一个任务依次投递给 `Pinger` / `Tracer` actor，避免 unstructured Task 竞争导致乱序；突发 100 个回包的回归测试覆盖该行为。
-- **公开 API 收敛**：仅用于内部测试注入的 `PingSocket`、`SocketFactory`、`HostResolver` 和 `MonotonicTimestamp` 不再暴露为公共契约。
-- **单消费者错误统一**：`PingError.sequenceAlreadyConsumed` 同时适用于 `Pinger.responses` 与 `Tracer.hops`，不再携带错误的 Pinger 专属文案。
+- ✅ **收包保序**（已实现，进 0.3.0）：socket 回调先进入单一 `AsyncStream` 管道，再由一个任务依次投递给 `Pinger` / `Tracer` actor，避免 unstructured Task 竞争导致乱序；突发 100 个回包的回归测试覆盖该行为。
+- ✅ **公开 API 收敛**（已实现，进 0.3.0，breaking）：仅用于内部测试注入的 `PingSocket`、`SocketFactory`、`HostResolver` 和 `MonotonicTimestamp` 不再暴露为公共契约。
+- ✅ **单消费者错误统一**（已实现，进 0.3.0，breaking）：`PingError.responsesAlreadyConsumed` 重命名为 `sequenceAlreadyConsumed`，同时适用于 `Pinger.responses` 与 `Tracer.hops`，不再携带错误的 Pinger 专属文案。
 
 ## 6.3 Backlog（有价值但不排期）
 
