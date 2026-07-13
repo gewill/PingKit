@@ -101,9 +101,28 @@ Ping/
 2. ✅ **M2 IPv4 单发**：socket 封装、DispatchSource 收包、`Pinger.ping(_:)` 一次性 API 在 macOS 跑通；ping-cli 出雏形。
 3. ✅ **M3 连续 ping**：AsyncSequence、interval/timeout/count、序号匹配与去重（重复/乱序回包）、统计。
 4. ✅ **M4 生命周期与错误语义**：Task cancellation、迭代终止、显式 `stop()`、ICMPv4 差错报文映射。
-5. ⏳ **M5 打磨**：iOS 验证、Linux 适配（可降级）、DocC 文档、CI（macOS + Linux）。
+5. ⏳ **M5 CI 与 Linux 验证**（下一步，优先级最高）
+   - GitHub Actions 两个 job：
+     - macOS：`swift build && swift test`（集成测试在 runner 上可直接跑 loopback）。
+     - Linux：ubuntu runner + Swift 6 工具链；先 `sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"` 打开免特权 ICMP，再 `swift test`。这样 Linux 从"best-effort 未编译验证"直接升级为 CI 持续验证。
+     - Glibc 分支从未实际编译过，预期要修一轮条件编译小错（SOCK_DGRAM 枚举、常量类型差异）。
+   - 顺手加 LICENSE（MIT）和 README badge。
+6. ⏳ **M6 发布 v0.1.0**
+   - DocC catalog（API 注释已基本齐备），Swift Package Index 收录并启用其托管文档。
+   - SemVer 打 tag `0.1.0`；README 写清楚稳定性承诺（0.x 阶段 API 可能调整）。
+7. ⏳ **M7 iOS 验证**
+   - CI 加 `xcodebuild -destination 'generic/platform=iOS'` 编译门禁。
+   - 最小 SwiftUI demo App 真机验证：Wi-Fi / 蜂窝、App 进后台挂起后 socket 与在途 probe 的行为（预期：suspend 后 DispatchSource 停摆，恢复后超时补发，需实测确认语义并写进文档）。
+   - 确认 ping 局域网地址是否触发 iOS 14+ 本地网络权限弹窗，README 补充 `NSLocalNetworkUsageDescription` 指引。
 
 IPv6 作为独立后续里程碑：仅在出现真实需求后，补充 ICMPv6 协议、hop-limit ancillary data、双栈地址选择策略和对应平台测试，不影响首版交付。
+
+## 6.1 Backlog（有价值但不排期）
+
+- **traceroute 模式**：ICMP dgram socket 支持 `setsockopt(IP_TTL)`，且 type 11 Time Exceeded 的解析/映射已经就绪，逐跳探测是 v0.2 的自然候选特性。
+- **RTT 精度增强**：用 `SO_TIMESTAMP` 内核时间戳替代用户态 `ContinuousClock`，消除调度抖动。
+- **收包保序**：目前 socket 回调用无序 unstructured Task 投递进 actor，突发回包理论上可能乱序进入流（间隔式 ping 实际影响可忽略）。如需严格保序，可改为 AsyncStream 管道单任务消费。已知限制，先记录。
+- **`Pinger` 复用语义**：当前一个实例一次运行；如用户反馈需要 reset/restart，再评估。
 
 ## 7. 测试策略
 
