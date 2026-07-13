@@ -1,6 +1,6 @@
 # PingKit
 
-[![CI](https://github.com/gewill/Ping/actions/workflows/ci.yml/badge.svg)](https://github.com/gewill/Ping/actions/workflows/ci.yml)
+[![CI](https://github.com/gewill/PingKit/actions/workflows/ci.yml/badge.svg)](https://github.com/gewill/PingKit/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Modern ICMP ping library for Swift — IPv4 echo over unprivileged ICMP datagram
@@ -20,11 +20,11 @@ Design rationale and roadmap live in [PLAN.md](PLAN.md).
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/gewill/Ping.git", from: "0.1.0"),
+    .package(url: "https://github.com/gewill/PingKit.git", from: "0.1.0"),
 ],
 targets: [
     .target(name: "MyTarget", dependencies: [
-        .product(name: "PingKit", package: "Ping"),
+        .product(name: "PingKit", package: "PingKit"),
     ]),
 ]
 ```
