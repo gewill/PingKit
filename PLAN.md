@@ -101,7 +101,7 @@ Ping/
 2. ✅ **M2 IPv4 单发**：socket 封装、DispatchSource 收包、`Pinger.ping(_:)` 一次性 API 在 macOS 跑通；ping-cli 出雏形。
 3. ✅ **M3 连续 ping**：AsyncSequence、interval/timeout/count、序号匹配与去重（重复/乱序回包）、统计。
 4. ✅ **M4 生命周期与错误语义**：Task cancellation、迭代终止、显式 `stop()`、ICMPv4 差错报文映射。
-5. ⏳ **M5 CI 与 Linux 验证**（下一步，优先级最高）
+5. ✅ **M5 CI 与 Linux 验证**（macOS + Linux 双平台全绿；Linux 在特权容器内跑通了真实 loopback 集成测试。Glibc 分支仅需一处修正：变参 `fcntl` 不可从 Swift 调用，`O_NONBLOCK` 限定 Darwin）
    - GitHub Actions 两个 job：
      - macOS：`swift build && swift test`（集成测试在 runner 上可直接跑 loopback）。
      - Linux：ubuntu runner + Swift 6 工具链；先 `sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"` 打开免特权 ICMP，再 `swift test`。这样 Linux 从"best-effort 未编译验证"直接升级为 CI 持续验证。
