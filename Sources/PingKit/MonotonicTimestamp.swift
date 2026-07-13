@@ -11,14 +11,14 @@ import Glibc
 /// (the `mach_absolute_time` clock) on Darwin, `CLOCK_MONOTONIC` on Linux —
 /// so kernel receive timestamps delivered via socket control messages can be
 /// subtracted directly from userspace send timestamps.
-public struct MonotonicTimestamp: Sendable, Equatable, Comparable {
-    public let nanoseconds: UInt64
+struct MonotonicTimestamp: Sendable, Equatable, Comparable {
+    let nanoseconds: UInt64
 
-    public init(nanoseconds: UInt64) {
+    init(nanoseconds: UInt64) {
         self.nanoseconds = nanoseconds
     }
 
-    public static func now() -> MonotonicTimestamp {
+    static func now() -> MonotonicTimestamp {
         #if canImport(Darwin)
         return MonotonicTimestamp(nanoseconds: clock_gettime_nsec_np(CLOCK_UPTIME_RAW))
         #else
@@ -30,12 +30,12 @@ public struct MonotonicTimestamp: Sendable, Equatable, Comparable {
 
     /// The elapsed time since `earlier`, clamped to zero if the clocks
     /// disagree by a hair.
-    public func duration(since earlier: MonotonicTimestamp) -> Duration {
+    func duration(since earlier: MonotonicTimestamp) -> Duration {
         guard nanoseconds > earlier.nanoseconds else { return .zero }
         return .nanoseconds(nanoseconds - earlier.nanoseconds)
     }
 
-    public static func < (lhs: MonotonicTimestamp, rhs: MonotonicTimestamp) -> Bool {
+    static func < (lhs: MonotonicTimestamp, rhs: MonotonicTimestamp) -> Bool {
         lhs.nanoseconds < rhs.nanoseconds
     }
 }

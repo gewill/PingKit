@@ -47,6 +47,30 @@ import Testing
         #expect(socket.closed)
     }
 
+    @Test func replyBurstPreservesSocketDeliveryOrder() async throws {
+        let replyCount = 100
+        let socket = BurstReplySocket(replyCount: replyCount)
+        let pinger = Pinger(
+            host: "test.invalid",
+            configuration: PingConfiguration(
+                interval: .microseconds(1),
+                timeout: .seconds(2),
+                count: .times(replyCount)),
+            socketFactory: { _ in socket },
+            resolver: { _ in IPv4Endpoint(127, 0, 0, 1) })
+
+        var sequences: [UInt16] = []
+        for try await response in pinger.responses {
+            guard case .reply(let reply) = response else {
+                Issue.record("unexpected response \(response)")
+                return
+            }
+            sequences.append(reply.sequence)
+        }
+
+        #expect(sequences == (0..<replyCount).map(UInt16.init))
+    }
+
     @Test func timeoutsReported() async throws {
         let socket = MockPingSocket()
         let pinger = makePinger(
@@ -143,7 +167,7 @@ import Testing
 
         for try await _ in pinger.responses {}
 
-        await #expect(throws: PingError.responsesAlreadyConsumed) {
+        await #expect(throws: PingError.sequenceAlreadyConsumed) {
             for try await _ in pinger.responses {}
         }
     }

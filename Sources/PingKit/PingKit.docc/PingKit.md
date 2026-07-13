@@ -72,8 +72,3 @@ The wire-format layer is pure functions, exposed for reuse and testing.
 - ``IPv4Header``
 - ``ReceivedPacket``
 - ``PacketParseError``
-
-### Socket Abstraction
-
-- ``PingSocket``
-- ``MonotonicTimestamp``

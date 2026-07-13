@@ -15,7 +15,7 @@ Design rationale and roadmap live in [PLAN.md](PLAN.md).
 
 ## Requirements
 
-- Swift 6.0+, macOS 13+ / iOS 16+ (Linux is best-effort; see below)
+- Swift 6.0+, macOS 13+ / iOS 16+
 - No root or entitlement is needed on macOS command-line tools. Sandboxed Mac
   apps need `com.apple.security.network.client` and
   `com.apple.security.network.server`.
@@ -35,6 +35,10 @@ targets: [
 
 PingKit has no runtime dependencies (the only package dependency is the
 DocC build plugin).
+
+The repository is currently private. Consumers need GitHub credentials with
+repository access for Swift Package Manager to resolve this URL. Public Swift
+Package Index distribution requires making the repository public first.
 
 > **Stability**: 0.x releases follow SemVer, but the public API may still
 > change between minor versions until 1.0.
@@ -74,7 +78,7 @@ print("\(stats.received)/\(stats.transmitted), loss \(stats.lossRate)")
 Lifecycle rules:
 
 - `responses` supports a **single consumer**; a second subscription throws
-  `PingError.responsesAlreadyConsumed`. Create a new `Pinger` per run.
+  `PingError.sequenceAlreadyConsumed`. Create a new `Pinger` per run.
 - Cancelling the consuming task stops the pinger and closes the socket.
 - If you `break` out of the loop without cancelling, call `await pinger.stop()`
   (idempotent) to release the socket deterministically.
@@ -138,5 +142,7 @@ A minimal SwiftUI demo app for on-device testing lives in
 Unprivileged ICMP sockets require `net.ipv4.ping_group_range` to cover the
 process's group (most distributions ship it disabled). The kernel also
 rewrites the echo identifier on these sockets, so replies are matched by
-sequence only there. CI builds and tests on Linux (including real loopback
-pings inside a privileged container).
+sequence only there. IPv4 echo builds and tests continuously on Linux,
+including real loopback pings inside a privileged container. Traceroute is
+best-effort: intermediate hops require Linux error-queue support that is not
+implemented yet; the destination reply still arrives.
