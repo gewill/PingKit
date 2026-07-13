@@ -23,3 +23,8 @@ Set your signing team, then run on a device.
   minute, return. Expected: no events while suspended, then timeouts/replies
   resume; the socket keeps working. Note the observed behavior in
   `PLAN.md` §3 if it differs.
+
+  ⚠️ Run this test **detached from Xcode** (launch from the Home Screen):
+  with the debugger attached, iOS never suspends the app, so it keeps
+  pinging in the background and the sequence number jumps by hundreds —
+  which says nothing about real suspension behavior.
