@@ -107,9 +107,7 @@ Ping/
      - Linux：ubuntu runner + Swift 6 工具链；先 `sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"` 打开免特权 ICMP，再 `swift test`。这样 Linux 从"best-effort 未编译验证"直接升级为 CI 持续验证。
      - Glibc 分支从未实际编译过，预期要修一轮条件编译小错（SOCK_DGRAM 枚举、常量类型差异）。
    - 顺手加 LICENSE（MIT）和 README badge。
-6. ⏳ **M6 发布 v0.1.0**
-   - DocC catalog（API 注释已基本齐备），Swift Package Index 收录并启用其托管文档。
-   - SemVer 打 tag `0.1.0`；README 写清楚稳定性承诺（0.x 阶段 API 可能调整）。
+6. ✅ **M6 发布 v0.1.0**（tag `0.1.0` + GitHub Release 已发；DocC catalog 本地构建通过；`.spi.yml` 就绪。**遗留**：Swift Package Index 收录需要仓库先转 public 并到 swiftpackageindex.com/add-a-package 提交，由仓库所有者操作）
 7. ⏳ **M7 iOS 验证**
    - CI 加 `xcodebuild -destination 'generic/platform=iOS'` 编译门禁。
    - 最小 SwiftUI demo App 真机验证：Wi-Fi / 蜂窝、App 进后台挂起后 socket 与在途 probe 的行为（预期：suspend 后 DispatchSource 停摆，恢复后超时补发，需实测确认语义并写进文档）。
