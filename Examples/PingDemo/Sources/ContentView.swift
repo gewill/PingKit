@@ -101,6 +101,13 @@ struct ContentView: View {
             resolve(sequence, text: "seq=\(sequence) unreachable (code \(code))", isError: true)
         case .timeExceeded(let sequence):
             resolve(sequence, text: "seq=\(sequence) TTL exceeded", isError: true)
+        case .packetTooBig(let sequence, let mtu):
+            resolve(sequence, text: "seq=\(sequence) packet too big (MTU \(mtu))", isError: true)
+        case .parameterProblem(let sequence, let code, let pointer):
+            resolve(
+                sequence,
+                text: "seq=\(sequence) parameter problem (code \(code), pointer \(pointer))",
+                isError: true)
         }
     }
 

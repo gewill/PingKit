@@ -3,9 +3,9 @@
 [![CI](https://github.com/gewill/PingKit/actions/workflows/ci.yml/badge.svg)](https://github.com/gewill/PingKit/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Modern ICMP ping library for Swift — IPv4 echo over unprivileged ICMP datagram
-sockets (the same facility Apple's SimplePing uses), wrapped in a Swift 6
-`actor` + `AsyncSequence` API. Zero dependencies.
+Modern dual-stack ICMP ping library for Swift — IPv4 and IPv6 echo over
+unprivileged ICMP datagram sockets, wrapped in a Swift 6 `actor` +
+`AsyncSequence` API. Zero dependencies.
 
 On Apple platforms, RTTs are measured against the kernel's packet-arrival
 timestamps (`SO_TIMESTAMP_MONOTONIC`), so scheduler wakeup latency doesn't
@@ -61,7 +61,8 @@ let pinger = Pinger(host: "1.1.1.1", configuration: .init(
     timeout: .seconds(2),
     count: .times(5),
     payloadSize: 56,
-    timeToLive: nil))  // outgoing TTL 1...255; nil keeps the system default
+    timeToLive: nil,       // IPv4 TTL / IPv6 hop limit
+    addressFamily: .automatic)) // follows system DNS ordering, including DNS64
 
 for try await response in pinger.responses {
     switch response {
@@ -70,6 +71,9 @@ for try await response in pinger.responses {
     case .timeout(let seq):             print("seq=\(seq) timed out")
     case .unreachable(let seq, let code): print("seq=\(seq) unreachable (code \(code))")
     case .timeExceeded(let seq):        print("seq=\(seq) TTL exceeded")
+    case .packetTooBig(let seq, let mtu): print("seq=\(seq) packet too big (MTU \(mtu))")
+    case .parameterProblem(let seq, let code, let pointer):
+        print("seq=\(seq) parameter problem (code \(code), pointer \(pointer))")
     }
 }
 
@@ -78,11 +82,10 @@ print("\(stats.received)/\(stats.transmitted), loss \(stats.lossRate)")
 ```
 
 `.sent` fires as each echo request leaves the socket. While the run remains
-active, one terminal event (`.reply`, `.timeout`, `.unreachable`, or
-`.timeExceeded`) follows for the same sequence, so a UI can insert a pending
-row per probe and update it in place (the demo app shows this pattern). On
-stop, cancellation, or stream failure, consumers should clear any remaining
-pending rows.
+active, one terminal event follows for the same sequence, so a UI can insert
+a pending row per probe and update it in place (the demo app shows this
+pattern). On stop, cancellation, or stream failure, consumers should clear
+any remaining pending rows.
 
 Lifecycle rules:
 
@@ -91,6 +94,19 @@ Lifecycle rules:
 - Cancelling the consuming task stops the pinger and closes the socket.
 - If you `break` out of the loop without cancelling, call `await pinger.stop()`
   (idempotent) to release the socket deterministically.
+
+## IPv6 and NAT64
+
+`addressFamily` defaults to `.automatic`. PingKit asks `getaddrinfo` for both
+families and uses its first result, preserving the platform's RFC 6724 / DNS64
+selection. This lets hostnames resolve to synthesized IPv6 destinations on an
+IPv6-only NAT64 network. Use `.ipv4` or `.ipv6` to force a family; IPv6
+literals and scoped link-local addresses are supported.
+
+IPv6 replies expose their source through `IPAddress.ipv6` and their received
+hop limit through `PingReply.timeToLive`. ICMPv6 Destination Unreachable,
+Time Exceeded, Packet Too Big, and Parameter Problem messages map to typed
+`PingResponse` events. `Tracer` remains IPv4-only in this release.
 
 ## Traceroute
 
@@ -119,12 +135,13 @@ the destination hop still resolves.
 ## CLI
 
 ```
-swift run ping-cli 8.8.8.8 -c 5 -i 1 -W 2 -s 56 -m 64
+swift run ping-cli 8.8.8.8 -4 -c 5 -i 1 -W 2 -s 56 -m 64
+swift run ping-cli ::1 -6 -c 3
 swift run ping-cli trace 8.8.8.8 -m 30 -q 3 -W 1
 ```
 
-In ping mode `-m` sets the outgoing TTL (as in `ping(8)`); in trace mode it
-sets the maximum hop count.
+In ping mode `-4` / `-6` force the address family and `-m` sets the outgoing
+TTL or hop limit; in trace mode `-m` sets the maximum hop count.
 
 Prints `ping(8)`-style output including the closing statistics block
 (`traceroute(8)`-style in trace mode); Ctrl-C stops an unlimited run and
@@ -152,9 +169,10 @@ A minimal SwiftUI demo app for on-device testing lives in
 ## Linux notes
 
 Unprivileged ICMP sockets require `net.ipv4.ping_group_range` to cover the
-process's group (most distributions ship it disabled). The kernel also
+process's group (despite its name, it controls both IPv4 and IPv6 ping
+sockets; most distributions ship it disabled). The kernel also
 rewrites the echo identifier on these sockets, so replies are matched by
-sequence only there. IPv4 echo builds and tests continuously on Linux,
+sequence only there. IPv4 and IPv6 echo build and test continuously on Linux,
 including real loopback pings inside a privileged container. Traceroute is
-best-effort: intermediate hops require Linux error-queue support that is not
-implemented yet; the destination reply still arrives.
+IPv4-only and best-effort: intermediate hops require Linux error-queue support
+that is not implemented yet; the destination reply still arrives.

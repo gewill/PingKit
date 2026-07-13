@@ -28,6 +28,19 @@ struct MonotonicTimestamp: Sendable, Equatable, Comparable {
         #endif
     }
 
+    #if canImport(Darwin)
+    static func fromMachAbsoluteTime(_ ticks: UInt64) -> MonotonicTimestamp {
+        MonotonicTimestamp(
+            nanoseconds: ticks * UInt64(timebase.numer) / UInt64(timebase.denom))
+    }
+
+    private static let timebase: mach_timebase_info_data_t = {
+        var info = mach_timebase_info_data_t()
+        mach_timebase_info(&info)
+        return info
+    }()
+    #endif
+
     /// The elapsed time since `earlier`, clamped to zero if the clocks
     /// disagree by a hair.
     func duration(since earlier: MonotonicTimestamp) -> Duration {

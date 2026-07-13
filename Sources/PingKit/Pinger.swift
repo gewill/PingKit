@@ -20,8 +20,8 @@
 /// - Breaking out of the loop without cancelling does **not** stop the pinger
 ///   by itself in all cases — call `stop()` (idempotent) when done early.
 public actor Pinger {
-    typealias SocketFactory = @Sendable (IPv4Endpoint) throws -> any PingSocket
-    typealias HostResolver = @Sendable (String) async throws -> IPv4Endpoint
+    typealias SocketFactory = @Sendable (ResolvedEndpoint) throws -> any PingSocket
+    typealias HostResolver = @Sendable (String) async throws -> ResolvedEndpoint
 
     private enum State {
         case idle
@@ -37,7 +37,7 @@ public actor Pinger {
 
     private var state: State = .idle
     private var claimed = false
-    private var endpoint: IPv4Endpoint?
+    private var endpoint: ResolvedEndpoint?
     private var socket: (any PingSocket)?
     private var continuation: AsyncThrowingStream<PingResponse, any Error>.Continuation?
     private var sendTask: Task<Void, Never>?
@@ -62,8 +62,13 @@ public actor Pinger {
         self.init(
             host: host,
             configuration: configuration,
-            socketFactory: { try ICMPv4Socket(destination: $0) },
-            resolver: { try await Resolver.resolveIPv4($0) })
+            socketFactory: { endpoint in
+                switch endpoint {
+                case .ipv4(let destination): try ICMPv4Socket(destination: destination)
+                case .ipv6(let destination): try ICMPv6Socket(destination: destination)
+                }
+            },
+            resolver: { try await Resolver.resolve($0, family: configuration.addressFamily) })
     }
 
     init(
@@ -89,9 +94,14 @@ public actor Pinger {
     public static func ping(
         _ host: String,
         timeout: Duration = .seconds(2),
-        payloadSize: Int = 56
+        payloadSize: Int = 56,
+        addressFamily: PingConfiguration.AddressFamily = .automatic
     ) async throws -> PingReply {
-        let configuration = PingConfiguration(timeout: timeout, count: .times(1), payloadSize: payloadSize)
+        let configuration = PingConfiguration(
+            timeout: timeout,
+            count: .times(1),
+            payloadSize: payloadSize,
+            addressFamily: addressFamily)
         let pinger = Pinger(host: host, configuration: configuration)
         for try await response in pinger.responses {
             switch response {
@@ -105,6 +115,10 @@ public actor Pinger {
                 throw PingError.destinationUnreachable(code: code)
             case .timeExceeded:
                 throw PingError.timeToLiveExceeded
+            case .packetTooBig(_, let mtu):
+                throw PingError.packetTooBig(mtu: mtu)
+            case .parameterProblem(_, let code, let pointer):
+                throw PingError.parameterProblem(code: code, pointer: pointer)
             }
         }
         throw PingError.timedOut
@@ -152,7 +166,7 @@ public actor Pinger {
         if case .stopped = state { return Self.finishedStream() }
         state = .running
 
-        let endpoint: IPv4Endpoint
+        let endpoint: ResolvedEndpoint
         do {
             endpoint = try await resolver(host)
         } catch {
@@ -175,14 +189,14 @@ public actor Pinger {
             }
             let (datagrams, receiveContinuation) = AsyncStream<SocketDatagram>.makeStream()
             self.receiveContinuation = receiveContinuation
-            try socket.activate { [weak self] datagram, receivedAt in
+            try socket.activate { [weak self] datagram in
                 guard self != nil else { return }
-                receiveContinuation.yield(SocketDatagram(bytes: datagram, receivedAt: receivedAt))
+                receiveContinuation.yield(datagram)
             }
             receiveTask = Task { [weak self] in
                 for await datagram in datagrams {
                     guard let self else { return }
-                    await self.handleDatagram(datagram.bytes, receivedAt: datagram.receivedAt)
+                    await self.handleDatagram(datagram)
                 }
             }
         } catch {
@@ -233,9 +247,15 @@ public actor Pinger {
     }
 
     private func sendProbe(sequence: UInt16) -> Bool {
-        guard case .running = state, let socket, let continuation else { return false }
-        let payload = ICMPv4.payloadPattern(size: configuration.payloadSize)
-        let packet = ICMPv4.makeEchoRequest(identifier: identifier, sequence: sequence, payload: payload)
+        guard case .running = state, let endpoint, let socket, let continuation else { return false }
+        let payload = (0..<configuration.payloadSize).map { UInt8(truncatingIfNeeded: $0) }
+        let packet: [UInt8]
+        switch endpoint {
+        case .ipv4:
+            packet = ICMPv4.makeEchoRequest(identifier: identifier, sequence: sequence, payload: payload)
+        case .ipv6:
+            packet = ICMPv6.makeEchoRequest(identifier: identifier, sequence: sequence, payload: payload)
+        }
         let sentAt = MonotonicTimestamp.now()
         do {
             try socket.send(packet)
@@ -256,51 +276,108 @@ public actor Pinger {
         return true
     }
 
-    private func handleDatagram(_ datagram: [UInt8], receivedAt: MonotonicTimestamp) {
-        guard case .running = state else { return }
-        guard let packet = ReceivedPacket.parse(datagram) else { return }
+    private func handleDatagram(_ datagram: SocketDatagram) {
+        guard case .running = state, let endpoint else { return }
+        switch endpoint {
+        case .ipv4(let destination):
+            handleIPv4Datagram(datagram, destination: destination)
+        case .ipv6(let destination):
+            handleIPv6Datagram(datagram, destination: destination)
+        }
+    }
 
+    private func handleIPv4Datagram(_ datagram: SocketDatagram, destination: IPv4Endpoint) {
+        guard let packet = ReceivedPacket.parse(datagram.bytes) else { return }
         switch packet.message {
         case .echoReply(let replyIdentifier, let sequence, let payloadCount):
-            // The Linux kernel rewrites the echo identifier on datagram ICMP
-            // sockets, so it can't be matched there; Darwin preserves it.
-            #if !os(Linux)
-            guard replyIdentifier == identifier else { return }
-            #else
-            _ = replyIdentifier
-            #endif
-            guard let probe = pending.removeValue(forKey: sequence) else { return }
-            probe.timeoutTask.cancel()
-            let rtt = receivedAt.duration(since: probe.sentAt)
-            recordRTT(rtt)
-            let reply = PingReply(
+            handleReply(
+                identifier: replyIdentifier,
                 sequence: sequence,
-                roundTripTime: rtt,
-                timeToLive: packet.timeToLive,
-                from: packet.source ?? endpoint ?? IPv4Endpoint(rawAddress: 0),
-                byteCount: ICMPv4.headerSize + payloadCount)
-            continuation?.yield(.reply(reply))
-            completeProbe()
+                payloadCount: payloadCount,
+                from: .ipv4(packet.source ?? destination),
+                hopLimit: packet.timeToLive,
+                receivedAt: datagram.receivedAt)
 
         case .destinationUnreachable(let code, let probeReference):
-            guard let probeReference, probeMatches(probeReference),
-                  let probe = pending.removeValue(forKey: probeReference.sequence) else { return }
-            probe.timeoutTask.cancel()
-            continuation?.yield(.unreachable(sequence: probeReference.sequence, code: code))
-            completeProbe()
+            handleError(probeReference) { .unreachable(sequence: $0, code: code) }
 
         case .timeExceeded(_, let probeReference):
-            guard let probeReference, probeMatches(probeReference),
-                  let probe = pending.removeValue(forKey: probeReference.sequence) else { return }
-            probe.timeoutTask.cancel()
-            continuation?.yield(.timeExceeded(sequence: probeReference.sequence))
-            completeProbe()
+            handleError(probeReference) { .timeExceeded(sequence: $0) }
 
         case .echoRequest, .other:
             // Pinging localhost can deliver our own request back; ignore it
             // along with any unrelated ICMP traffic.
             return
         }
+    }
+
+    private func handleIPv6Datagram(_ datagram: SocketDatagram, destination: IPv6Endpoint) {
+        guard let message = try? ICMPv6.parseMessage(datagram.bytes[...]) else { return }
+        switch message {
+        case .echoReply(let replyIdentifier, let sequence, let payloadCount):
+            handleReply(
+                identifier: replyIdentifier,
+                sequence: sequence,
+                payloadCount: payloadCount,
+                from: datagram.source ?? .ipv6(destination),
+                hopLimit: datagram.hopLimit,
+                receivedAt: datagram.receivedAt)
+
+        case .destinationUnreachable(let code, let probeReference):
+            handleError(probeReference) { .unreachable(sequence: $0, code: code) }
+
+        case .packetTooBig(let mtu, let probeReference):
+            handleError(probeReference) { .packetTooBig(sequence: $0, mtu: mtu) }
+
+        case .timeExceeded(_, let probeReference):
+            handleError(probeReference) { .timeExceeded(sequence: $0) }
+
+        case .parameterProblem(let code, let pointer, let probeReference):
+            handleError(probeReference) {
+                .parameterProblem(sequence: $0, code: code, pointer: pointer)
+            }
+
+        case .echoRequest, .other:
+            return
+        }
+    }
+
+    private func handleReply(
+        identifier replyIdentifier: UInt16,
+        sequence: UInt16,
+        payloadCount: Int,
+        from source: IPAddress,
+        hopLimit: UInt8?,
+        receivedAt: MonotonicTimestamp
+    ) {
+        // Linux ping sockets rewrite the identifier to the socket's port.
+        #if !os(Linux)
+        guard replyIdentifier == identifier else { return }
+        #else
+        _ = replyIdentifier
+        #endif
+        guard let probe = pending.removeValue(forKey: sequence) else { return }
+        probe.timeoutTask.cancel()
+        let rtt = receivedAt.duration(since: probe.sentAt)
+        recordRTT(rtt)
+        continuation?.yield(.reply(PingReply(
+            sequence: sequence,
+            roundTripTime: rtt,
+            timeToLive: hopLimit,
+            from: source,
+            byteCount: ICMPv4.headerSize + payloadCount)))
+        completeProbe()
+    }
+
+    private func handleError(
+        _ probeReference: EmbeddedProbe?,
+        response: (UInt16) -> PingResponse
+    ) {
+        guard let probeReference, probeMatches(probeReference),
+              let probe = pending.removeValue(forKey: probeReference.sequence) else { return }
+        probe.timeoutTask.cancel()
+        continuation?.yield(response(probeReference.sequence))
+        completeProbe()
     }
 
     private func handleTimeout(sequence: UInt16) {

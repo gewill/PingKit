@@ -1,5 +1,12 @@
 /// Options controlling a `Pinger` run.
 public struct PingConfiguration: Sendable {
+    public enum AddressFamily: Sendable, Equatable {
+        /// Follow `getaddrinfo` ordering, including DNS64/NAT64 results.
+        case automatic
+        case ipv4
+        case ipv6
+    }
+
     public enum Count: Sendable, Equatable {
         case unlimited
         case times(Int)
@@ -14,22 +21,26 @@ public struct PingConfiguration: Sendable {
     /// Echo payload size in bytes (the classic default is 56, for 64-byte
     /// ICMP messages).
     public var payloadSize: Int
-    /// IPv4 TTL for outgoing probes (1...255); `nil` keeps the system
-    /// default.
+    /// IPv4 TTL or IPv6 unicast hop limit for outgoing probes (1...255);
+    /// `nil` keeps the system default.
     public var timeToLive: Int?
+    /// Address family used to resolve and contact the host.
+    public var addressFamily: AddressFamily
 
     public init(
         interval: Duration = .seconds(1),
         timeout: Duration = .seconds(2),
         count: Count = .unlimited,
         payloadSize: Int = 56,
-        timeToLive: Int? = nil
+        timeToLive: Int? = nil,
+        addressFamily: AddressFamily = .automatic
     ) {
         self.interval = interval
         self.timeout = timeout
         self.count = count
         self.payloadSize = payloadSize
         self.timeToLive = timeToLive
+        self.addressFamily = addressFamily
     }
 
     func validate() throws {

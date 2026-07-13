@@ -4,8 +4,8 @@ import PingKit
 
 func usage() -> Never {
     print("""
-    usage: ping-cli <host> [-c count] [-i interval_seconds] [-W timeout_seconds] [-s payload_bytes] [-m ttl]
-           ping-cli trace <host> [-m max_hops] [-q probes_per_hop] [-W timeout_seconds]
+    usage: ping-cli <host> [-4|-6] [-c count] [-i interval_seconds] [-W timeout_seconds] [-s payload_bytes] [-m ttl]
+           ping-cli trace <host> [-4] [-m max_hops] [-q probes_per_hop] [-W timeout_seconds]
     """)
     exit(64)
 }
@@ -27,10 +27,16 @@ var payloadSize: Int?
 var maxHops = 30
 var probesPerHop = 3
 var timeToLive: Int?
+var addressFamily: PingConfiguration.AddressFamily = .automatic
 
 var arguments = argumentList.makeIterator()
 while let argument = arguments.next() {
     switch argument {
+    case "-4":
+        addressFamily = .ipv4
+    case "-6":
+        guard !traceMode else { usage() }
+        addressFamily = .ipv6
     case "-c":
         guard let value = arguments.next(), let parsed = Int(value), parsed > 0 else { usage() }
         count = parsed
@@ -114,7 +120,8 @@ let configuration = PingConfiguration(
     timeout: .seconds(timeoutSeconds ?? 2.0),
     count: count.map { .times($0) } ?? .unlimited,
     payloadSize: payloadSize ?? 56,
-    timeToLive: timeToLive)
+    timeToLive: timeToLive,
+    addressFamily: addressFamily)
 
 let pinger = Pinger(host: host, configuration: configuration)
 
@@ -141,6 +148,10 @@ do {
             print("Destination unreachable for icmp_seq \(sequence) (ICMP code \(code))")
         case .timeExceeded(let sequence):
             print("Time to live exceeded for icmp_seq \(sequence)")
+        case .packetTooBig(let sequence, let mtu):
+            print("Packet too big for icmp_seq \(sequence) (MTU \(mtu))")
+        case .parameterProblem(let sequence, let code, let pointer):
+            print("Parameter problem for icmp_seq \(sequence) (code \(code), pointer \(pointer))")
         }
     }
 } catch {
