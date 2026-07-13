@@ -82,7 +82,7 @@ let stats = await pinger.statistics()   // sent/received/loss/min/avg/max/stddev
 
 ```
 Ping/
-├── Package.swift            // swift-tools 6.0, 零第三方依赖
+├── Package.swift            // swift-tools 6.0；库目标零运行时依赖
 ├── Sources/
 │   ├── PingKit/             // 库本体
 │   │   ├── Pinger.swift             // 公开 actor / API 门面
@@ -91,8 +91,8 @@ Ping/
 │   │   ├── ICMP/                    // 协议层：header 编解码、checksum（纯函数，易测）
 │   │   ├── Socket/                  // socket 封装 + DispatchSource 事件层
 │   │   └── Resolver/                // getaddrinfo 封装
-│   └── ping-cli/            // 可执行 demo（ArgumentParser 可选，或手写参数解析保持零依赖）
-└── Tests/PingKitTests/
+│   └── PingKitCLI/          // `pingkit` executable（ping + trace）
+└── Tests/                  // 库测试 + CLI 参数解析测试
 ```
 
 平台目标：macOS 13+ / iOS 16+（为了 `Duration`/Swift 并发）。Linux 的 IPv4 / IPv6 Echo 持续验证，Traceroute 为 IPv4 best-effort；tvOS、watchOS、visionOS 暂不承诺。
@@ -100,7 +100,7 @@ Ping/
 ## 6. 里程碑
 
 1. ✅ **M1 协议层（纯逻辑）**：ICMP echo 包编码/解码、checksum、IPv4 头剥离。全部纯函数 + 单元测试（含畸形包 fuzz 样例）。
-2. ✅ **M2 IPv4 单发**：socket 封装、DispatchSource 收包、`Pinger.ping(_:)` 一次性 API 在 macOS 跑通；ping-cli 出雏形。
+2. ✅ **M2 IPv4 单发**：socket 封装、DispatchSource 收包、`Pinger.ping(_:)` 一次性 API 在 macOS 跑通；CLI 出雏形。
 3. ✅ **M3 连续 ping**：AsyncSequence、interval/timeout/count、序号匹配与去重（重复/乱序回包）、统计。
 4. ✅ **M4 生命周期与错误语义**：Task cancellation、迭代终止、显式 `stop()`、ICMPv4 差错报文映射。
 5. ✅ **M5 CI 与 Linux 验证**（macOS + Linux 双平台全绿；Linux 在特权容器内跑通真实 loopback 集成测试。Glibc 分支已完成条件编译修正：变参 `fcntl` 不可从 Swift 调用，因此 `O_NONBLOCK` 仅在 Darwin 设置）
@@ -122,11 +122,11 @@ Ping/
    - `ICMPv6` Echo 与 RFC 4443 四类差错解析；`ICMPv6Socket` 支持源地址、hop limit 与发送 hop limit。
    - `IPAddress` / `IPv6Endpoint` 与 scoped link-local 地址；`PingReply.from` 从 IPv4-only 升级为双栈地址。
    - `PingConfiguration.AddressFamily` 提供 `.automatic` / `.ipv4` / `.ipv6`；automatic 遵循系统 `getaddrinfo` 排序，覆盖 DNS64/NAT64。
-   - macOS 真实 `::1` 集成测试通过；CLI 增加 `-4` / `-6`。IPv6 traceroute 明确留待后续。
+   - macOS 真实 `::1` 集成测试通过；`pingkit` CLI 增加 `-4` / `-6`。IPv6 traceroute 明确留待后续。
 
 ## 6.1 0.2.0 已发布能力
 
-- ✅ **traceroute 模式**（已实现，进 0.2.0）：`Tracer` actor + `hops` AsyncSequence，`IP_TTL` 逐跳探测，Time Exceeded/Echo Reply/Unreachable 三类终止语义；CLI `ping-cli trace`。实测 8.8.8.8 十五跳路径正确。注意：Linux 内核把 ICMP 差错投递到 socket error queue（MSG_ERRQUEUE），当前未读取，Linux 上中间跳显示为超时，终点仍可达——如需完整 Linux 支持需实现 error queue 读取，暂记 backlog。
+- ✅ **traceroute 模式**（已实现，进 0.2.0）：`Tracer` actor + `hops` AsyncSequence，`IP_TTL` 逐跳探测，Time Exceeded/Echo Reply/Unreachable 三类终止语义；CLI `pingkit trace`。实测 8.8.8.8 十五跳路径正确。注意：Linux 内核把 ICMP 差错投递到 socket error queue（MSG_ERRQUEUE），当前未读取，Linux 上中间跳显示为超时，终点仍可达——如需完整 Linux 支持需实现 error queue 读取，暂记 backlog。
 - ✅ **RTT 精度增强**（已实现，进 0.2.0）：Darwin 用 `SO_TIMESTAMP_MONOTONIC` 内核收包时间戳（`SCM_TIMESTAMP_MONOTONIC` cmsg，mach ticks × timebase 换算 ns），与发送侧 `CLOCK_UPTIME_RAW` 同基准；Linux 统一为 `CLOCK_MONOTONIC` 读取时刻兜底。`MonotonicTimestamp` 取代 `ContinuousClock.Instant` 贯穿 socket 协议。实测 loopback：唤醒延迟约 0.18ms 被消除，平均 RTT 0.34ms → 0.10ms，stddev 0.13 → 0.02ms。
 
 ## 6.2 0.3.0 已发布能力
@@ -143,6 +143,7 @@ Ping/
 ## 6.4 0.5.0 待发布能力
 
 - ✅ **IPv6 Ping**：完整内容见 M8；这是 `PingReply.from` 类型变化与 `PingResponse` 新增 ICMPv6 差错 case 的 breaking minor release。
+- ✅ **正式 CLI**：可执行产品更名为 `pingkit`，用 `swift-argument-parser` 提供 ping/trace 子命令、类型化校验、自动 help 与解析测试；依赖仅链接 CLI target。
 
 ## 6.5 Backlog（有价值但不排期）
 

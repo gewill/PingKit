@@ -33,8 +33,9 @@ targets: [
 ]
 ```
 
-PingKit has no runtime dependencies (the only package dependency is the
-DocC build plugin).
+The `PingKit` library target has no runtime dependencies. The `pingkit`
+executable uses Apple's `swift-argument-parser`; the DocC plugin is used only
+for documentation builds.
 
 The repository is currently private. Consumers need GitHub credentials with
 repository access for Swift Package Manager to resolve this URL. Public Swift
@@ -135,9 +136,9 @@ the destination hop still resolves.
 ## CLI
 
 ```
-swift run ping-cli 8.8.8.8 -4 -c 5 -i 1 -W 2 -s 56 -m 64
-swift run ping-cli ::1 -6 -c 3
-swift run ping-cli trace 8.8.8.8 -m 30 -q 3 -W 1
+swift run pingkit 8.8.8.8 -4 -c 5 -i 1 -W 2 -s 56 -m 64
+swift run pingkit ::1 -6 -c 3
+swift run pingkit trace 8.8.8.8 -m 30 -q 3 -W 1
 ```
 
 In ping mode `-4` / `-6` force the address family and `-m` sets the outgoing
