@@ -77,10 +77,12 @@ let stats = await pinger.statistics()
 print("\(stats.received)/\(stats.transmitted), loss \(stats.lossRate)")
 ```
 
-`.sent` fires as each echo request leaves the socket; exactly one terminal
-event (`.reply`, `.timeout`, `.unreachable`, or `.timeExceeded`) follows for
-the same sequence, so a UI can insert a pending row per probe and update it
-in place (the demo app shows this pattern).
+`.sent` fires as each echo request leaves the socket. While the run remains
+active, one terminal event (`.reply`, `.timeout`, `.unreachable`, or
+`.timeExceeded`) follows for the same sequence, so a UI can insert a pending
+row per probe and update it in place (the demo app shows this pattern). On
+stop, cancellation, or stream failure, consumers should clear any remaining
+pending rows.
 
 Lifecycle rules:
 

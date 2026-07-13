@@ -75,6 +75,7 @@ struct ContentView: View {
             } catch {
                 prepend(Line(text: "error: \(error)", isError: true))
             }
+            finishPending()
             let stats = await pinger.statistics()
             summary = Self.format(stats)
             pingTask = nil
@@ -112,6 +113,12 @@ struct ContentView: View {
             lines[index].isError = isError
         } else {
             prepend(Line(text: text, isError: isError))
+        }
+    }
+
+    private func finishPending() {
+        for sequence in Array(pending.keys) {
+            resolve(sequence, text: "seq=\(sequence) stopped", isError: true)
         }
     }
 
