@@ -94,6 +94,10 @@ import Testing
         #expect(statistics.received == 1)
     }
 
+    // On Linux the kernel rewrites the echo identifier on datagram ICMP
+    // sockets, so the library deliberately matches by sequence only there;
+    // this Darwin-behavior test doesn't apply.
+    #if !os(Linux)
     @Test func mismatchedIdentifierIgnored() async throws {
         let socket = MockPingSocket()
         let pinger = makePinger(
@@ -116,6 +120,7 @@ import Testing
         _ = try? await injector.value
         #expect(events == [.timeout(sequence: 0)])
     }
+    #endif
 
     @Test func unreachableMapped() async throws {
         let socket = MockPingSocket(autoReply: { Fixtures.unreachableDatagram(forRequest: $0, code: 1) })

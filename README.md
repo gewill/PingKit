@@ -67,4 +67,5 @@ stops an unlimited run and still prints statistics.
 Unprivileged ICMP sockets require `net.ipv4.ping_group_range` to cover the
 process's group (most distributions ship it disabled). The kernel also
 rewrites the echo identifier on these sockets, so replies are matched by
-sequence only there. Linux is compiled for but not yet CI-verified.
+sequence only there. CI builds and tests on Linux (including real loopback
+pings inside a privileged container).
