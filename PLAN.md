@@ -108,13 +108,14 @@ Ping/
      - Glibc 分支从未实际编译过，预期要修一轮条件编译小错（SOCK_DGRAM 枚举、常量类型差异）。
    - 顺手加 LICENSE（MIT）和 README badge。
 6. ✅ **M6 发布 v0.1.0**（tag `0.1.0` + GitHub Release 已发；DocC catalog 本地构建通过；`.spi.yml` 就绪。**遗留**：Swift Package Index 收录需要仓库先转 public 并到 swiftpackageindex.com/add-a-package 提交，由仓库所有者操作）
-7. 🚧 **M7 iOS 验证**（自动化部分已完成，真机部分待验证）
+7. ✅ **M7 iOS 验证**
    - ✅ CI 加 iOS 门禁：`generic/platform=iOS` 设备目标编译 + iOS 模拟器全量测试（32 个测试含 loopback 集成测试全部通过，证明 ICMP dgram socket 在 iOS 运行时可用）。
    - ✅ 最小 SwiftUI demo App（`Examples/PingDemo`，xcodegen 生成工程，含 `NSLocalNetworkUsageDescription`），模拟器构建通过。
    - 真机实测结果（2026-07-13，iPhone 真机）：
      - ✅ Wi-Fi / 蜂窝下 ping 外网正常。
      - ✅ ping 局域网地址（路由器）首次触发 iOS 本地网络权限弹窗，授权后正常收到回包。
-     - ⚠️ 挂起测试注意：**Xcode 调试器附加时 iOS 不挂起 App**——实测从 seq 9 退后台约 8 分钟，回前台已到 seq 500+，即后台持续发包，这是调试器环境的行为，不代表真实挂起语义。真实语义需脱离调试器（从主屏启动）复测：预期挂起期间无事件，恢复后从中断处继续并对在途 probe 报超时。
+     - ⚠️ 调试器附加时 iOS 不挂起 App——实测从 seq 9 退后台约 8 分钟，回前台已到 seq 500+（后台持续发包），此为调试环境行为，不代表真实语义。
+     - ✅ 脱离调试器复测结论：**iOS 对后台 App 无存活承诺**——短期退后台进程即可能被系统终止（回前台是全新启动），长期后台必被杀。因此库的使用契约是：ping 会话不跨后台存活，退后台时 `stop()`、回前台重开（demo 已用 `scenePhase` 演示该模式）；进程被直接终止时 socket 由内核回收，无泄漏问题。M7 关闭。
 
 IPv6 作为独立后续里程碑：仅在出现真实需求后，补充 ICMPv6 协议、hop-limit ancillary data、双栈地址选择策略和对应平台测试，不影响首版交付。
 

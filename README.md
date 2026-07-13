@@ -93,9 +93,12 @@ Simulator). Two platform behaviors to plan for:
 - **Local network privacy**: pinging LAN addresses triggers the iOS 14+
   local network permission prompt — add `NSLocalNetworkUsageDescription`
   to your Info.plist. Pinging internet hosts does not.
-- **Suspension**: sockets don't receive while the app is suspended; an
-  in-flight run resumes (with timeouts for missed probes) on return to
-  foreground.
+- **Backgrounding**: iOS makes no survival promise for suspended apps —
+  on-device testing showed the process can be terminated within minutes of
+  entering the background (and always is eventually). Don't expect a ping
+  session to survive the background: stop the run when the scene leaves the
+  foreground and start a new one on return (the demo app shows this
+  `scenePhase` pattern). `Pinger.stop()`/deinit close the socket either way.
 
 A minimal SwiftUI demo app for on-device testing lives in
 [Examples/PingDemo](Examples/PingDemo).

@@ -2,6 +2,7 @@ import PingKit
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var host = "8.8.8.8"
     @State private var lines: [Line] = []
     @State private var summary = ""
@@ -41,6 +42,15 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("PingKit Demo")
+        }
+        // Suspended apps can be terminated by iOS at any time, so a ping
+        // session must not expect to survive the background. Stop cleanly
+        // when leaving the foreground; the user restarts on return.
+        .onChange(of: scenePhase) { phase in
+            if phase == .background, isRunning {
+                lines.append(Line(text: "— stopped: app entered background —", isError: true))
+                stop()
+            }
         }
     }
 
