@@ -82,6 +82,15 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
         }
     }
 
+    func setTimeToLive(_ ttl: Int) throws {
+        try queue.sync {
+            guard !isClosed else { throw PingError.socketOptionFailed(errno: EBADF) }
+            var value = Int32(ttl)
+            let result = setsockopt(descriptor, Int32(IPPROTO_IP), IP_TTL, &value, socklen_t(MemoryLayout<Int32>.size))
+            guard result == 0 else { throw PingError.socketOptionFailed(errno: errno) }
+        }
+    }
+
     func close() {
         queue.sync {
             guard !isClosed else { return }

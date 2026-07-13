@@ -5,6 +5,7 @@ import PingKit
 func usage() -> Never {
     print("""
     usage: ping-cli <host> [-c count] [-i interval_seconds] [-W timeout_seconds] [-s payload_bytes]
+           ping-cli trace <host> [-m max_hops] [-q probes_per_hop] [-W timeout_seconds]
     """)
     exit(64)
 }
@@ -14,13 +15,19 @@ func milliseconds(_ duration: Duration) -> String {
     return String(format: "%.3f", seconds * 1000)
 }
 
+var argumentList = Array(CommandLine.arguments.dropFirst())
+let traceMode = argumentList.first == "trace"
+if traceMode { argumentList.removeFirst() }
+
 var host: String?
 var count: Int?
 var intervalSeconds = 1.0
-var timeoutSeconds = 2.0
-var payloadSize = 56
+var timeoutSeconds: Double?
+var payloadSize: Int?
+var maxHops = 30
+var probesPerHop = 3
 
-var arguments = CommandLine.arguments.dropFirst().makeIterator()
+var arguments = argumentList.makeIterator()
 while let argument = arguments.next() {
     switch argument {
     case "-c":
@@ -35,6 +42,12 @@ while let argument = arguments.next() {
     case "-s":
         guard let value = arguments.next(), let parsed = Int(value), (0...65_507).contains(parsed) else { usage() }
         payloadSize = parsed
+    case "-m":
+        guard let value = arguments.next(), let parsed = Int(value), (1...255).contains(parsed) else { usage() }
+        maxHops = parsed
+    case "-q":
+        guard let value = arguments.next(), let parsed = Int(value), (1...16).contains(parsed) else { usage() }
+        probesPerHop = parsed
     case "-h", "--help":
         usage()
     default:
@@ -48,22 +61,66 @@ while let argument = arguments.next() {
 
 guard let host else { usage() }
 
+signal(SIGINT, SIG_IGN)
+let interruptQueue = DispatchQueue(label: "ping-cli.sigint")
+
+if traceMode {
+    let configuration = TracerouteConfiguration(
+        maxHops: maxHops,
+        probesPerHop: probesPerHop,
+        timeout: .seconds(timeoutSeconds ?? 1.0),
+        payloadSize: payloadSize ?? 16)
+    let tracer = Tracer(host: host, configuration: configuration)
+
+    let interruptSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: interruptQueue)
+    interruptSource.setEventHandler {
+        Task { await tracer.stop() }
+    }
+    interruptSource.activate()
+
+    print("traceroute to \(host), \(maxHops) hops max")
+    var reached = false
+    do {
+        for try await hop in tracer.hops {
+            var parts: [String] = []
+            var lastRouter: IPv4Endpoint?
+            for probe in hop.probes {
+                switch probe {
+                case .response(let router, let rtt, let kind):
+                    var entry = router == lastRouter ? "" : "\(router)  "
+                    lastRouter = router
+                    entry += "\(milliseconds(rtt)) ms"
+                    if case .unreachable(let code) = kind { entry += " !\(code)" }
+                    parts.append(entry)
+                case .timeout:
+                    parts.append("*")
+                }
+            }
+            print(String(format: "%2d  ", hop.ttl) + parts.joined(separator: "  "))
+            if hop.reachedDestination { reached = true }
+        }
+    } catch {
+        print("ping-cli: \(error)")
+        exit(2)
+    }
+    exit(reached ? 0 : 1)
+}
+
 let configuration = PingConfiguration(
     interval: .seconds(intervalSeconds),
-    timeout: .seconds(timeoutSeconds),
+    timeout: .seconds(timeoutSeconds ?? 2.0),
     count: count.map { .times($0) } ?? .unlimited,
-    payloadSize: payloadSize)
+    payloadSize: payloadSize ?? 56)
 
 let pinger = Pinger(host: host, configuration: configuration)
 
-signal(SIGINT, SIG_IGN)
-let interruptSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: DispatchQueue(label: "ping-cli.sigint"))
+let interruptSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: interruptQueue)
 interruptSource.setEventHandler {
     Task { await pinger.stop() }
 }
 interruptSource.activate()
 
-print("PING \(host): \(payloadSize) data bytes")
+print("PING \(host): \(configuration.payloadSize) data bytes")
 
 var exitCode: Int32 = 0
 do {

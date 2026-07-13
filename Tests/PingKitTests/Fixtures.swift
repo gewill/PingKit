@@ -51,15 +51,35 @@ enum Fixtures {
         return ipv4Datagram(payload: echoReply(identifier: identifier, sequence: sequence, payload: payload), ttl: ttl)
     }
 
-    /// Builds an ICMP Destination Unreachable datagram embedding `request`.
-    static func unreachableDatagram(forRequest request: [UInt8], code: UInt8 = 1) -> [UInt8] {
+    /// Builds an ICMP error datagram (e.g. type 3 or 11) embedding `request`,
+    /// as sent by `source`.
+    static func icmpErrorDatagram(
+        type: UInt8,
+        code: UInt8,
+        forRequest request: [UInt8],
+        source: (UInt8, UInt8, UInt8, UInt8) = (127, 0, 0, 1)
+    ) -> [UInt8] {
         let embedded = ipv4Datagram(payload: request)
-        var icmp: [UInt8] = [3, code, 0, 0, 0, 0, 0, 0]
+        var icmp: [UInt8] = [type, code, 0, 0, 0, 0, 0, 0]
         icmp += embedded
         let checksum = ICMPv4.internetChecksum(icmp)
         icmp[2] = UInt8(checksum >> 8)
         icmp[3] = UInt8(checksum & 0xFF)
-        return ipv4Datagram(payload: icmp)
+        return ipv4Datagram(payload: icmp, source: source)
+    }
+
+    /// Builds an ICMP Destination Unreachable datagram embedding `request`.
+    static func unreachableDatagram(forRequest request: [UInt8], code: UInt8 = 1) -> [UInt8] {
+        icmpErrorDatagram(type: 3, code: code, forRequest: request)
+    }
+
+    /// Builds an ICMP Time Exceeded datagram embedding `request`, as sent by
+    /// the router at `source`.
+    static func timeExceededDatagram(
+        forRequest request: [UInt8],
+        source: (UInt8, UInt8, UInt8, UInt8)
+    ) -> [UInt8] {
+        icmpErrorDatagram(type: 11, code: 0, forRequest: request, source: source)
     }
 }
 
@@ -69,15 +89,29 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
     private let lock = NSLock()
     private var handler: (@Sendable ([UInt8], ContinuousClock.Instant) -> Void)?
     private var sentDatagrams: [[UInt8]] = []
+    private var appliedTTLs: [Int] = []
+    private var currentTTL = 64
     private var isClosed = false
     private let autoReply: (@Sendable ([UInt8]) -> [UInt8]?)?
+    /// TTL-aware reply strategy for traceroute tests; takes precedence over
+    /// `autoReply` when set.
+    private let routeReply: (@Sendable (_ datagram: [UInt8], _ ttl: Int) -> [UInt8]?)?
 
-    init(autoReply: (@Sendable ([UInt8]) -> [UInt8]?)? = nil) {
+    init(
+        autoReply: (@Sendable ([UInt8]) -> [UInt8]?)? = nil,
+        routeReply: (@Sendable ([UInt8], Int) -> [UInt8]?)? = nil
+    ) {
         self.autoReply = autoReply
+        self.routeReply = routeReply
     }
 
     var sent: [[UInt8]] {
         lock.withLock { sentDatagrams }
+    }
+
+    /// TTL in effect for each send, in send order.
+    var sentTTLs: [Int] {
+        lock.withLock { appliedTTLs }
     }
 
     var closed: Bool {
@@ -89,13 +123,22 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
     }
 
     func send(_ datagram: [UInt8]) throws {
-        let currentHandler = lock.withLock {
+        let (currentHandler, ttl) = lock.withLock {
             sentDatagrams.append(datagram)
-            return handler
+            appliedTTLs.append(currentTTL)
+            return (handler, currentTTL)
         }
-        if let autoReply, let reply = autoReply(datagram) {
+        if let routeReply {
+            if let reply = routeReply(datagram, ttl) {
+                currentHandler?(reply, ContinuousClock.now)
+            }
+        } else if let autoReply, let reply = autoReply(datagram) {
             currentHandler?(reply, ContinuousClock.now)
         }
+    }
+
+    func setTimeToLive(_ ttl: Int) throws {
+        lock.withLock { currentTTL = ttl }
     }
 
     func close() {

@@ -9,6 +9,7 @@ public enum PingError: Error, Sendable, Equatable {
     /// DNS resolution failed; `code` is the `getaddrinfo` error code.
     case resolutionFailed(host: String, code: Int32)
     case socketCreationFailed(errno: Int32)
+    case socketOptionFailed(errno: Int32)
     case sendFailed(errno: Int32)
     /// `Pinger.responses` supports a single consumer; a second subscription
     /// (or reuse after a failed start) gets this error. Create a new `Pinger`.
@@ -31,6 +32,8 @@ extension PingError: CustomStringConvertible {
                 message += " (on Linux, unprivileged ICMP requires net.ipv4.ping_group_range to cover this process's group, or CAP_NET_RAW)"
             }
             return message
+        case .socketOptionFailed(let errorNumber):
+            return "failed to set socket option: \(Self.describe(errno: errorNumber))"
         case .sendFailed(let errorNumber):
             return "failed to send echo request: \(Self.describe(errno: errorNumber))"
         case .responsesAlreadyConsumed:

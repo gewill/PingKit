@@ -49,6 +49,14 @@ socket deterministically.
 - ``PingStatistics``
 - ``PingError``
 
+### Traceroute
+
+- ``Tracer``
+- ``TracerouteConfiguration``
+- ``TracerouteHops``
+- ``TracerouteHop``
+- ``TracerouteProbe``
+
 ### Addressing
 
 - ``IPv4Endpoint``

@@ -75,14 +75,40 @@ Lifecycle rules:
 - If you `break` out of the loop without cancelling, call `await pinger.stop()`
   (idempotent) to release the socket deterministically.
 
+## Traceroute
+
+`Tracer` sends echo requests with increasing TTL and reads the ICMP Time
+Exceeded answers from intermediate routers — same unprivileged socket, no
+root needed:
+
+```swift
+for try await hop in Tracer(host: "8.8.8.8").hops {
+    print(hop.ttl, hop.probes)   // one TracerouteHop per TTL
+}
+
+// or collect the whole route at once
+let route = try await Tracer.trace("8.8.8.8")
+```
+
+Each `TracerouteHop` groups the configurable per-TTL probes (default 3);
+probes are `.response(router:roundTripTime:kind:)` or `.timeout`, and the
+trace ends at the destination's echo reply, a Destination Unreachable, or
+`maxHops`. `Tracer` follows the same lifecycle rules as `Pinger`.
+
+Linux caveat: the kernel delivers ICMP errors to the socket error queue,
+which PingKit doesn't read yet — intermediate hops show as timeouts there;
+the destination hop still resolves.
+
 ## CLI
 
 ```
 swift run ping-cli 8.8.8.8 -c 5 -i 1 -W 2 -s 56
+swift run ping-cli trace 8.8.8.8 -m 30 -q 3 -W 1
 ```
 
-Prints `ping(8)`-style output including the closing statistics block; Ctrl-C
-stops an unlimited run and still prints statistics.
+Prints `ping(8)`-style output including the closing statistics block
+(`traceroute(8)`-style in trace mode); Ctrl-C stops an unlimited run and
+still prints statistics.
 
 ## iOS notes
 

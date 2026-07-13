@@ -57,4 +57,15 @@ let icmpLoopbackAvailable: Bool = {
         #expect(statistics.transmitted == 3)
         #expect(statistics.received == 3)
     }
+
+    @Test(.enabled(if: icmpLoopbackAvailable, "ICMP datagram sockets are unavailable in this environment"))
+    func tracerouteLoopback() async throws {
+        // Loopback is one hop away: TTL 1 must already reach the destination.
+        let hops = try await Tracer.trace(
+            "127.0.0.1",
+            configuration: TracerouteConfiguration(maxHops: 3, probesPerHop: 1, timeout: .seconds(2)))
+        #expect(hops.count == 1)
+        #expect(hops[0].ttl == 1)
+        #expect(hops[0].reachedDestination)
+    }
 }

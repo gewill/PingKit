@@ -8,6 +8,10 @@ public protocol PingSocket: Sendable {
     /// Sends one ICMP datagram to the destination the socket was created for.
     func send(_ datagram: [UInt8]) throws
 
+    /// Sets the IPv4 TTL applied to subsequently sent datagrams
+    /// (traceroute-style probing).
+    func setTimeToLive(_ ttl: Int) throws
+
     /// Stops receiving and releases the descriptor. Idempotent.
     func close()
 }

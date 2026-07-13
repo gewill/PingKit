@@ -121,7 +121,7 @@ IPv6 作为独立后续里程碑：仅在出现真实需求后，补充 ICMPv6 �
 
 ## 6.1 Backlog（有价值但不排期）
 
-- **traceroute 模式**：ICMP dgram socket 支持 `setsockopt(IP_TTL)`，且 type 11 Time Exceeded 的解析/映射已经就绪，逐跳探测是 v0.2 的自然候选特性。
+- ✅ **traceroute 模式**（已实现，进 0.2.0）：`Tracer` actor + `hops` AsyncSequence，`IP_TTL` 逐跳探测，Time Exceeded/Echo Reply/Unreachable 三类终止语义；CLI `ping-cli trace`。实测 8.8.8.8 十五跳路径正确。注意：Linux 内核把 ICMP 差错投递到 socket error queue（MSG_ERRQUEUE），当前未读取，Linux 上中间跳显示为超时，终点仍可达——如需完整 Linux 支持需实现 error queue 读取，暂记 backlog。
 - **RTT 精度增强**：用 `SO_TIMESTAMP` 内核时间戳替代用户态 `ContinuousClock`，消除调度抖动。
 - **收包保序**：目前 socket 回调用无序 unstructured Task 投递进 actor，突发回包理论上可能乱序进入流（间隔式 ping 实际影响可忽略）。如需严格保序，可改为 AsyncStream 管道单任务消费。已知限制，先记录。
 - **`Pinger` 复用语义**：当前一个实例一次运行；如用户反馈需要 reset/restart，再评估。
