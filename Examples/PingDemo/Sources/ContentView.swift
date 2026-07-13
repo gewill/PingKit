@@ -24,6 +24,7 @@ struct ContentView: View {
                         isRunning ? stop() : start()
                     }
                     .buttonStyle(.borderedProminent)
+                    .tint(isRunning ? .red : .accentColor)
                 }
                 .padding(.horizontal)
 
@@ -48,7 +49,7 @@ struct ContentView: View {
         // when leaving the foreground; the user restarts on return.
         .onChange(of: scenePhase) { phase in
             if phase == .background, isRunning {
-                lines.append(Line(text: "— stopped: app entered background —", isError: true))
+                prepend(Line(text: "— stopped: app entered background —", isError: true))
                 stop()
             }
         }
@@ -70,7 +71,7 @@ struct ContentView: View {
                     append(response)
                 }
             } catch {
-                lines.append(Line(text: "error: \(error)", isError: true))
+                prepend(Line(text: "error: \(error)", isError: true))
             }
             let stats = await pinger.statistics()
             summary = Self.format(stats)
@@ -86,14 +87,19 @@ struct ContentView: View {
         switch response {
         case .reply(let reply):
             let ttl = reply.timeToLive.map(String.init) ?? "?"
-            lines.append(Line(text: "seq=\(reply.sequence) ttl=\(ttl) time=\(Self.milliseconds(reply.roundTripTime)) ms"))
+            prepend(Line(text: "seq=\(reply.sequence) ttl=\(ttl) time=\(Self.milliseconds(reply.roundTripTime)) ms"))
         case .timeout(let sequence):
-            lines.append(Line(text: "seq=\(sequence) timed out", isError: true))
+            prepend(Line(text: "seq=\(sequence) timed out", isError: true))
         case .unreachable(let sequence, let code):
-            lines.append(Line(text: "seq=\(sequence) unreachable (code \(code))", isError: true))
+            prepend(Line(text: "seq=\(sequence) unreachable (code \(code))", isError: true))
         case .timeExceeded(let sequence):
-            lines.append(Line(text: "seq=\(sequence) TTL exceeded", isError: true))
+            prepend(Line(text: "seq=\(sequence) TTL exceeded", isError: true))
         }
+    }
+
+    /// Newest entries go on top so a long run never needs manual scrolling.
+    private func prepend(_ line: Line) {
+        lines.insert(line, at: 0)
     }
 
     private static func format(_ stats: PingStatistics) -> String {
