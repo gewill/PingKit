@@ -200,13 +200,16 @@ import Testing
         for try await response in pinger.responses {
             events.append(response)
         }
-        // Sends interleave with timeouts on a timing-dependent schedule, so
-        // assert each kind's order separately.
+        // Sends interleave with timeouts on a timing-dependent schedule. Each
+        // timeout has its own task, so cross-probe timeout order is unspecified.
         let sends = events.filter { if case .sent = $0 { true } else { false } }
-        let timeouts = events.filter { if case .timeout = $0 { true } else { false } }
+        let timeoutSequences = events.compactMap { response -> UInt16? in
+            if case .timeout(let sequence) = response { return sequence }
+            return nil
+        }
         #expect(events.count == 4)
         #expect(sends == [.sent(sequence: 0), .sent(sequence: 1)])
-        #expect(timeouts == [.timeout(sequence: 0), .timeout(sequence: 1)])
+        #expect(timeoutSequences.sorted() == [0, 1])
 
         let statistics = await pinger.statistics()
         #expect(statistics.transmitted == 2)

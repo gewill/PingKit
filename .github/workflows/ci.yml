@@ -31,7 +31,9 @@ jobs:
         run: |
           DEVICE=$(xcrun simctl list devices available | sed -nE 's/^ *(iPhone [^(]+) \(.*$/\1/p' | head -1)
           echo "Using simulator: $DEVICE"
-          xcodebuild -scheme PingKit-Package -destination "platform=iOS Simulator,name=$DEVICE" test
+          # Test only the library scheme: command-line executable tests are
+          # exercised by the macOS and Linux jobs and cannot run on iOS.
+          xcodebuild -scheme PingKit -destination "platform=iOS Simulator,name=$DEVICE" test
 
   linux:
     name: Linux (Swift ${{ matrix.swift }})
