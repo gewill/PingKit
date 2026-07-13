@@ -17,6 +17,8 @@ let reply = try await Pinger.ping("example.com")
 let pinger = Pinger(host: "1.1.1.1", configuration: .init(count: .times(5)))
 for try await response in pinger.responses {
     switch response {
+    case .sent(let seq):
+        print("seq=\(seq) sent")
     case .reply(let r):
         print("seq=\(r.sequence) rtt=\(r.roundTripTime)")
     case .timeout(let seq):

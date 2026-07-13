@@ -4,7 +4,7 @@ import PingKit
 
 func usage() -> Never {
     print("""
-    usage: ping-cli <host> [-c count] [-i interval_seconds] [-W timeout_seconds] [-s payload_bytes]
+    usage: ping-cli <host> [-c count] [-i interval_seconds] [-W timeout_seconds] [-s payload_bytes] [-m ttl]
            ping-cli trace <host> [-m max_hops] [-q probes_per_hop] [-W timeout_seconds]
     """)
     exit(64)
@@ -26,6 +26,7 @@ var timeoutSeconds: Double?
 var payloadSize: Int?
 var maxHops = 30
 var probesPerHop = 3
+var timeToLive: Int?
 
 var arguments = argumentList.makeIterator()
 while let argument = arguments.next() {
@@ -43,8 +44,10 @@ while let argument = arguments.next() {
         guard let value = arguments.next(), let parsed = Int(value), (0...65_507).contains(parsed) else { usage() }
         payloadSize = parsed
     case "-m":
+        // maxHops in trace mode, outgoing TTL in ping mode (as in ping(8)).
         guard let value = arguments.next(), let parsed = Int(value), (1...255).contains(parsed) else { usage() }
         maxHops = parsed
+        timeToLive = parsed
     case "-q":
         guard let value = arguments.next(), let parsed = Int(value), (1...16).contains(parsed) else { usage() }
         probesPerHop = parsed
@@ -110,7 +113,8 @@ let configuration = PingConfiguration(
     interval: .seconds(intervalSeconds),
     timeout: .seconds(timeoutSeconds ?? 2.0),
     count: count.map { .times($0) } ?? .unlimited,
-    payloadSize: payloadSize ?? 56)
+    payloadSize: payloadSize ?? 56,
+    timeToLive: timeToLive)
 
 let pinger = Pinger(host: host, configuration: configuration)
 
@@ -126,6 +130,8 @@ var exitCode: Int32 = 0
 do {
     for try await response in pinger.responses {
         switch response {
+        case .sent:
+            break  // ping(8) prints nothing when a request leaves
         case .reply(let reply):
             let ttl = reply.timeToLive.map(String.init) ?? "?"
             print("\(reply.byteCount) bytes from \(reply.from): icmp_seq=\(reply.sequence) ttl=\(ttl) time=\(milliseconds(reply.roundTripTime)) ms")

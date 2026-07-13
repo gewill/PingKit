@@ -1,6 +1,6 @@
 # Swift Ping 库规划（PingKit）
 
-> 状态：M1–M7 已完成，当前版本 0.3.0。更新日期：2026-07-13
+> 状态：M1–M7 已完成，当前版本 0.3.0；0.4.0 待发布。更新日期：2026-07-13
 
 ## 1. 背景与现有生态
 
@@ -130,7 +130,12 @@ IPv6 作为独立后续里程碑：仅在出现真实需求后，补充 ICMPv6 �
 - ✅ **公开 API 收敛**（已实现，进 0.3.0，breaking）：仅用于内部测试注入的 `PingSocket`、`SocketFactory`、`HostResolver` 和 `MonotonicTimestamp` 不再暴露为公共契约。
 - ✅ **单消费者错误统一**（已实现，进 0.3.0，breaking）：`PingError.responsesAlreadyConsumed` 重命名为 `sequenceAlreadyConsumed`，同时适用于 `Pinger.responses` 与 `Tracer.hops`，不再携带错误的 Pinger 专属文案。
 
-## 6.3 Backlog（有价值但不排期）
+## 6.3 0.4.0 待发布能力
+
+- ✅ **出包 TTL 配置**（进 0.4.0）：`PingConfiguration.timeToLive`（1...255，默认 `nil` 走系统默认），启动时经 `PingSocket.setTimeToLive` 应用到 socket，setsockopt 失败在首个 `next()` 上抛 `socketOptionFailed`。CLI ping 模式增加 `-m ttl`（对齐 `ping(8)`）。实测 `-m 1` 打 8.8.8.8 全部收到网关 Time Exceeded。
+- ✅ **`.sent` 事件**（进 0.4.0，breaking）：`PingResponse` 新增 `.sent(sequence:)`，每个探测包发出后、终态事件（reply/timeout/unreachable/timeExceeded）之前投递，供 UI 实现"发包即插 pending 行、回包原位更新"（Pingman 迁移的核心 UX）。`Pinger.ping` 一次性 API 自动跳过该事件；demo App 已改为 pending 行模式。消费方的 `switch` 需新增 case。
+
+## 6.4 Backlog（有价值但不排期）
 
 - **Linux Traceroute 完整中间跳**：读取 ICMP socket error queue（`MSG_ERRQUEUE`）。
 - **可插拔 Socket 后端（0.4 候选）**：先观察 0.3 的公开 API 收敛反馈；仅当出现自定义传输、外部 Mock、`SOCK_RAW` 或其他后端的真实需求时，重新设计并开放稳定的注入 API，不直接恢复当前内部协议。进入 0.4 的前置条件是至少一个可复现的外部使用场景，并明确生命周期、并发安全和错误语义；没有真实需求则继续留在 Backlog。

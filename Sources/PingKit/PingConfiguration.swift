@@ -14,17 +14,22 @@ public struct PingConfiguration: Sendable {
     /// Echo payload size in bytes (the classic default is 56, for 64-byte
     /// ICMP messages).
     public var payloadSize: Int
+    /// IPv4 TTL for outgoing probes (1...255); `nil` keeps the system
+    /// default.
+    public var timeToLive: Int?
 
     public init(
         interval: Duration = .seconds(1),
         timeout: Duration = .seconds(2),
         count: Count = .unlimited,
-        payloadSize: Int = 56
+        payloadSize: Int = 56,
+        timeToLive: Int? = nil
     ) {
         self.interval = interval
         self.timeout = timeout
         self.count = count
         self.payloadSize = payloadSize
+        self.timeToLive = timeToLive
     }
 
     func validate() throws {
@@ -32,7 +37,8 @@ public struct PingConfiguration: Sendable {
               timeout > .zero,
               payloadSize >= 0,
               payloadSize <= 65_507,
-              count.isValid else {
+              count.isValid,
+              timeToLive.map((1...255).contains) ?? true else {
             throw PingError.invalidConfiguration
         }
     }

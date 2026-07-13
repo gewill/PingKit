@@ -95,6 +95,8 @@ public actor Pinger {
         let pinger = Pinger(host: host, configuration: configuration)
         for try await response in pinger.responses {
             switch response {
+            case .sent:
+                continue
             case .reply(let reply):
                 return reply
             case .timeout:
@@ -168,6 +170,9 @@ public actor Pinger {
         do {
             let socket = try socketFactory(endpoint)
             self.socket = socket
+            if let timeToLive = configuration.timeToLive {
+                try socket.setTimeToLive(timeToLive)
+            }
             let (datagrams, receiveContinuation) = AsyncStream<SocketDatagram>.makeStream()
             self.receiveContinuation = receiveContinuation
             try socket.activate { [weak self] datagram, receivedAt in
@@ -240,6 +245,7 @@ public actor Pinger {
             return false
         }
         transmitted += 1
+        continuation.yield(.sent(sequence: sequence))
         let timeout = configuration.timeout
         let timeoutTask = Task { [weak self] in
             try? await Task.sleep(for: timeout)
