@@ -54,7 +54,9 @@ import Testing
             host: "test.invalid",
             configuration: PingConfiguration(
                 interval: .microseconds(1),
-                timeout: .seconds(2),
+                // Generous timeout: all sends must complete before any probe
+                // times out, and loaded CI simulators stall for seconds.
+                timeout: .seconds(60),
                 count: .times(replyCount)),
             socketFactory: { _ in socket },
             resolver: { _ in IPv4Endpoint(127, 0, 0, 1) })
