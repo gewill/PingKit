@@ -150,6 +150,7 @@ import Testing
         // assert each kind's order separately.
         let sends = events.filter { if case .sent = $0 { true } else { false } }
         let timeouts = events.filter { if case .timeout = $0 { true } else { false } }
+        #expect(events.count == 4)
         #expect(sends == [.sent(sequence: 0), .sent(sequence: 1)])
         #expect(timeouts == [.timeout(sequence: 0), .timeout(sequence: 1)])
 
