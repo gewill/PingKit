@@ -96,13 +96,17 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
     /// TTL-aware reply strategy for traceroute tests; takes precedence over
     /// `autoReply` when set.
     private let routeReply: (@Sendable (_ datagram: [UInt8], _ ttl: Int) -> [UInt8]?)?
+    /// When set, `setTimeToLive` throws this error.
+    private let setTimeToLiveError: PingError?
 
     init(
         autoReply: (@Sendable ([UInt8]) -> [UInt8]?)? = nil,
-        routeReply: (@Sendable ([UInt8], Int) -> [UInt8]?)? = nil
+        routeReply: (@Sendable ([UInt8], Int) -> [UInt8]?)? = nil,
+        setTimeToLiveError: PingError? = nil
     ) {
         self.autoReply = autoReply
         self.routeReply = routeReply
+        self.setTimeToLiveError = setTimeToLiveError
     }
 
     var sent: [[UInt8]] {
@@ -138,6 +142,7 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
     }
 
     func setTimeToLive(_ ttl: Int) throws {
+        if let setTimeToLiveError { throw setTimeToLiveError }
         lock.withLock { currentTTL = ttl }
     }
 

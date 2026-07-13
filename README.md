@@ -24,7 +24,7 @@ Design rationale and roadmap live in [PLAN.md](PLAN.md).
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/gewill/PingKit.git", from: "0.3.0"),
+    .package(url: "https://github.com/gewill/PingKit.git", from: "0.4.0"),
 ],
 targets: [
     .target(name: "MyTarget", dependencies: [
@@ -60,10 +60,12 @@ let pinger = Pinger(host: "1.1.1.1", configuration: .init(
     interval: .seconds(1),
     timeout: .seconds(2),
     count: .times(5),
-    payloadSize: 56))
+    payloadSize: 56,
+    timeToLive: nil))  // outgoing TTL 1...255; nil keeps the system default
 
 for try await response in pinger.responses {
     switch response {
+    case .sent(let seq):                print("seq=\(seq) sent")  // show a pending row here
     case .reply(let r):                 print("seq=\(r.sequence) ttl=\(r.timeToLive ?? 0) rtt=\(r.roundTripTime)")
     case .timeout(let seq):             print("seq=\(seq) timed out")
     case .unreachable(let seq, let code): print("seq=\(seq) unreachable (code \(code))")
@@ -74,6 +76,11 @@ for try await response in pinger.responses {
 let stats = await pinger.statistics()
 print("\(stats.received)/\(stats.transmitted), loss \(stats.lossRate)")
 ```
+
+`.sent` fires as each echo request leaves the socket; exactly one terminal
+event (`.reply`, `.timeout`, `.unreachable`, or `.timeExceeded`) follows for
+the same sequence, so a UI can insert a pending row per probe and update it
+in place (the demo app shows this pattern).
 
 Lifecycle rules:
 
@@ -110,9 +117,12 @@ the destination hop still resolves.
 ## CLI
 
 ```
-swift run ping-cli 8.8.8.8 -c 5 -i 1 -W 2 -s 56
+swift run ping-cli 8.8.8.8 -c 5 -i 1 -W 2 -s 56 -m 64
 swift run ping-cli trace 8.8.8.8 -m 30 -q 3 -W 1
 ```
+
+In ping mode `-m` sets the outgoing TTL (as in `ping(8)`); in trace mode it
+sets the maximum hop count.
 
 Prints `ping(8)`-style output including the closing statistics block
 (`traceroute(8)`-style in trace mode); Ctrl-C stops an unlimited run and

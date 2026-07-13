@@ -8,6 +8,8 @@ import Testing
         PingConfiguration(count: .times(0)),
         PingConfiguration(payloadSize: -1),
         PingConfiguration(payloadSize: 65_508),
+        PingConfiguration(timeToLive: 0),
+        PingConfiguration(timeToLive: 256),
     ])
     func invalidConfigurationIsReportedAsAnError(_ configuration: PingConfiguration) async {
         let pinger = makePinger(
@@ -19,6 +21,65 @@ import Testing
         }
     }
 
+    @Test func configuredTimeToLiveAppliedToEveryProbe() async throws {
+        let socket = MockPingSocket(autoReply: { Fixtures.replyDatagram(forRequest: $0) })
+        let pinger = makePinger(
+            configuration: PingConfiguration(
+                interval: .milliseconds(5), timeout: .seconds(1), count: .times(2), timeToLive: 1),
+            socket: socket)
+
+        for try await _ in pinger.responses {}
+
+        #expect(socket.sentTTLs == [1, 1])
+    }
+
+    @Test func timeToLiveSocketFailureSurfacesOnFirstNext() async {
+        let socket = MockPingSocket(setTimeToLiveError: .socketOptionFailed(errno: 22))
+        let pinger = makePinger(
+            configuration: PingConfiguration(count: .times(1), timeToLive: 8),
+            socket: socket)
+
+        await #expect(throws: PingError.socketOptionFailed(errno: 22)) {
+            for try await _ in pinger.responses {}
+        }
+        #expect(socket.closed)
+        #expect(socket.sent.isEmpty)
+    }
+
+    @Test func sentEventPrecedesReply() async throws {
+        let socket = MockPingSocket(autoReply: { Fixtures.replyDatagram(forRequest: $0) })
+        let pinger = makePinger(
+            configuration: PingConfiguration(interval: .milliseconds(5), timeout: .seconds(1), count: .times(1)),
+            socket: socket)
+
+        var events: [PingResponse] = []
+        for try await response in pinger.responses {
+            events.append(response)
+        }
+
+        #expect(events.count == 2)
+        #expect(events.first == .sent(sequence: 0))
+        guard case .reply(let reply)? = events.last else {
+            Issue.record("expected a reply, got \(String(describing: events.last))")
+            return
+        }
+        #expect(reply.sequence == 0)
+    }
+
+    @Test func sentEventPrecedesTimeout() async throws {
+        let socket = MockPingSocket()
+        let pinger = makePinger(
+            configuration: PingConfiguration(interval: .milliseconds(5), timeout: .milliseconds(30), count: .times(1)),
+            socket: socket)
+
+        var events: [PingResponse] = []
+        for try await response in pinger.responses {
+            events.append(response)
+        }
+
+        #expect(events == [.sent(sequence: 0), .timeout(sequence: 0)])
+    }
+
     @Test func repliesArriveInOrder() async throws {
         let socket = MockPingSocket(autoReply: { Fixtures.replyDatagram(forRequest: $0) })
         let pinger = makePinger(
@@ -27,6 +88,7 @@ import Testing
 
         var sequences: [UInt16] = []
         for try await response in pinger.responses {
+            if case .sent = response { continue }
             guard case .reply(let reply) = response else {
                 Issue.record("unexpected response \(response)")
                 return
@@ -63,6 +125,7 @@ import Testing
 
         var sequences: [UInt16] = []
         for try await response in pinger.responses {
+            if case .sent = response { continue }
             guard case .reply(let reply) = response else {
                 Issue.record("unexpected response \(response)")
                 return
@@ -83,7 +146,12 @@ import Testing
         for try await response in pinger.responses {
             events.append(response)
         }
-        #expect(events == [.timeout(sequence: 0), .timeout(sequence: 1)])
+        // Sends interleave with timeouts on a timing-dependent schedule, so
+        // assert each kind's order separately.
+        let sends = events.filter { if case .sent = $0 { true } else { false } }
+        let timeouts = events.filter { if case .timeout = $0 { true } else { false } }
+        #expect(sends == [.sent(sequence: 0), .sent(sequence: 1)])
+        #expect(timeouts == [.timeout(sequence: 0), .timeout(sequence: 1)])
 
         let statistics = await pinger.statistics()
         #expect(statistics.transmitted == 2)
@@ -110,7 +178,8 @@ import Testing
         var replies = 0
         var timeouts = 0
         for try await response in pinger.responses {
-            if case .reply = response { replies += 1 } else { timeouts += 1 }
+            if case .reply = response { replies += 1 }
+            if case .timeout = response { timeouts += 1 }
         }
         _ = try? await injector.value
 
@@ -144,7 +213,7 @@ import Testing
             events.append(response)
         }
         _ = try? await injector.value
-        #expect(events == [.timeout(sequence: 0)])
+        #expect(events == [.sent(sequence: 0), .timeout(sequence: 0)])
     }
     #endif
 
@@ -158,7 +227,7 @@ import Testing
         for try await response in pinger.responses {
             events.append(response)
         }
-        #expect(events == [.unreachable(sequence: 0, code: 1)])
+        #expect(events == [.sent(sequence: 0), .unreachable(sequence: 0, code: 1)])
     }
 
     @Test func secondConsumerRejected() async throws {
@@ -181,18 +250,19 @@ import Testing
             socket: socket)
 
         let consumer = Task {
-            var events = 0
-            for try await _ in pinger.responses {
-                events += 1
+            var outcomes = 0
+            for try await response in pinger.responses {
+                if case .sent = response { continue }
+                outcomes += 1
             }
-            return events
+            return outcomes
         }
         try await Task.sleep(for: .milliseconds(50))
         await pinger.stop()
         await pinger.stop()
 
-        let events = try await consumer.value
-        #expect(events == 0)
+        let outcomes = try await consumer.value
+        #expect(outcomes == 0)
         #expect(socket.closed)
         let statistics = await pinger.statistics()
         #expect(statistics.transmitted >= 1)

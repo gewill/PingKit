@@ -1,5 +1,10 @@
 /// One event in a ping run: a matched reply, or the various ways a probe can fail.
 public enum PingResponse: Sendable, Equatable {
+    /// An echo request left the socket. Exactly one terminal event (`.reply`,
+    /// `.timeout`, `.unreachable`, or `.timeExceeded`) follows for the same
+    /// sequence, so UIs can show a pending row per probe and update it in
+    /// place.
+    case sent(sequence: UInt16)
     case reply(PingReply)
     case timeout(sequence: UInt16)
     /// The network returned ICMP Destination Unreachable (type 3) for this probe.

@@ -5,6 +5,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var host = "8.8.8.8"
     @State private var lines: [Line] = []
+    @State private var pending: [UInt16: UUID] = [:]
     @State private var summary = ""
     @State private var pingTask: Task<Void, Never>?
 
@@ -57,12 +58,13 @@ struct ContentView: View {
 
     private struct Line: Identifiable {
         let id = UUID()
-        let text: String
+        var text: String
         var isError = false
     }
 
     private func start() {
         lines = []
+        pending = [:]
         summary = ""
         let pinger = Pinger(host: host)
         pingTask = Task {
@@ -85,15 +87,31 @@ struct ContentView: View {
 
     private func append(_ response: PingResponse) {
         switch response {
+        case .sent(let sequence):
+            let line = Line(text: "seq=\(sequence) pinging …")
+            pending[sequence] = line.id
+            prepend(line)
         case .reply(let reply):
             let ttl = reply.timeToLive.map(String.init) ?? "?"
-            prepend(Line(text: "seq=\(reply.sequence) ttl=\(ttl) time=\(Self.milliseconds(reply.roundTripTime)) ms"))
+            resolve(reply.sequence, text: "seq=\(reply.sequence) ttl=\(ttl) time=\(Self.milliseconds(reply.roundTripTime)) ms")
         case .timeout(let sequence):
-            prepend(Line(text: "seq=\(sequence) timed out", isError: true))
+            resolve(sequence, text: "seq=\(sequence) timed out", isError: true)
         case .unreachable(let sequence, let code):
-            prepend(Line(text: "seq=\(sequence) unreachable (code \(code))", isError: true))
+            resolve(sequence, text: "seq=\(sequence) unreachable (code \(code))", isError: true)
         case .timeExceeded(let sequence):
-            prepend(Line(text: "seq=\(sequence) TTL exceeded", isError: true))
+            resolve(sequence, text: "seq=\(sequence) TTL exceeded", isError: true)
+        }
+    }
+
+    /// Updates the pending row inserted by `.sent` in place, keeping its
+    /// position and identity; falls back to prepending if it's gone.
+    private func resolve(_ sequence: UInt16, text: String, isError: Bool = false) {
+        if let id = pending.removeValue(forKey: sequence),
+           let index = lines.firstIndex(where: { $0.id == id }) {
+            lines[index].text = text
+            lines[index].isError = isError
+        } else {
+            prepend(Line(text: text, isError: isError))
         }
     }
 
