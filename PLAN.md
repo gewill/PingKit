@@ -122,7 +122,7 @@ IPv6 作为独立后续里程碑：仅在出现真实需求后，补充 ICMPv6 �
 ## 6.1 Backlog（有价值但不排期）
 
 - ✅ **traceroute 模式**（已实现，进 0.2.0）：`Tracer` actor + `hops` AsyncSequence，`IP_TTL` 逐跳探测，Time Exceeded/Echo Reply/Unreachable 三类终止语义；CLI `ping-cli trace`。实测 8.8.8.8 十五跳路径正确。注意：Linux 内核把 ICMP 差错投递到 socket error queue（MSG_ERRQUEUE），当前未读取，Linux 上中间跳显示为超时，终点仍可达——如需完整 Linux 支持需实现 error queue 读取，暂记 backlog。
-- **RTT 精度增强**：用 `SO_TIMESTAMP` 内核时间戳替代用户态 `ContinuousClock`，消除调度抖动。
+- ✅ **RTT 精度增强**（已实现，进 0.2.0）：Darwin 用 `SO_TIMESTAMP_MONOTONIC` 内核收包时间戳（`SCM_TIMESTAMP_MONOTONIC` cmsg，mach ticks × timebase 换算 ns），与发送侧 `CLOCK_UPTIME_RAW` 同基准；Linux 统一为 `CLOCK_MONOTONIC` 读取时刻兜底。公开类型 `MonotonicTimestamp` 取代 `ContinuousClock.Instant` 贯穿 socket 协议。实测 loopback：唤醒延迟约 0.18ms 被消除，平均 RTT 0.34ms → 0.10ms，stddev 0.13 → 0.02ms。
 - **收包保序**：目前 socket 回调用无序 unstructured Task 投递进 actor，突发回包理论上可能乱序进入流（间隔式 ping 实际影响可忽略）。如需严格保序，可改为 AsyncStream 管道单任务消费。已知限制，先记录。
 - **`Pinger` 复用语义**：当前一个实例一次运行；如用户反馈需要 reset/restart，再评估。
 

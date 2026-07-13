@@ -2,8 +2,10 @@
 /// with a mock that injects replies, timeouts, and error packets.
 public protocol PingSocket: Sendable {
     /// Starts receiving. `receiveHandler` is invoked on an arbitrary internal
-    /// queue with each raw datagram and the instant it was read.
-    func activate(receiveHandler: @escaping @Sendable ([UInt8], ContinuousClock.Instant) -> Void) throws
+    /// queue with each raw datagram and its receive timestamp — the kernel's
+    /// arrival timestamp where the platform provides one, otherwise the
+    /// instant the datagram was read.
+    func activate(receiveHandler: @escaping @Sendable ([UInt8], MonotonicTimestamp) -> Void) throws
 
     /// Sends one ICMP datagram to the destination the socket was created for.
     func send(_ datagram: [UInt8]) throws

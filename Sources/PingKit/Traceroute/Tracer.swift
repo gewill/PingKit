@@ -39,7 +39,7 @@ public actor Tracer {
 
     private struct Awaiting {
         let sequence: UInt16
-        let sentAt: ContinuousClock.Instant
+        let sentAt: MonotonicTimestamp
         let continuation: CheckedContinuation<ProbeOutcome, Never>
         let timeoutTask: Task<Void, Never>
     }
@@ -184,7 +184,7 @@ public actor Tracer {
                 identifier: identifier,
                 sequence: sequence,
                 payload: ICMPv4.payloadPattern(size: configuration.payloadSize))
-            let sentAt = ContinuousClock.now
+            let sentAt = MonotonicTimestamp.now()
             try socket.send(packet)
             let timeout = configuration.timeout
             return await withCheckedContinuation { probeContinuation in
@@ -212,7 +212,7 @@ public actor Tracer {
         awaiting.continuation.resume(returning: .timedOut)
     }
 
-    private func handleDatagram(_ datagram: [UInt8], receivedAt: ContinuousClock.Instant) {
+    private func handleDatagram(_ datagram: [UInt8], receivedAt: MonotonicTimestamp) {
         guard case .running = state, let awaiting else { return }
         guard let packet = ReceivedPacket.parse(datagram) else { return }
 
@@ -227,7 +227,7 @@ public actor Tracer {
             guard sequence == awaiting.sequence else { return }
             outcome = .answered(
                 router: packet.source ?? endpoint ?? IPv4Endpoint(rawAddress: 0),
-                roundTripTime: receivedAt - awaiting.sentAt,
+                roundTripTime: receivedAt.duration(since: awaiting.sentAt),
                 kind: .destination)
 
         case .timeExceeded(_, let probeReference):
@@ -235,7 +235,7 @@ public actor Tracer {
                   probeReference.sequence == awaiting.sequence else { return }
             outcome = .answered(
                 router: packet.source ?? IPv4Endpoint(rawAddress: 0),
-                roundTripTime: receivedAt - awaiting.sentAt,
+                roundTripTime: receivedAt.duration(since: awaiting.sentAt),
                 kind: .hop)
 
         case .destinationUnreachable(let code, let probeReference):
@@ -243,7 +243,7 @@ public actor Tracer {
                   probeReference.sequence == awaiting.sequence else { return }
             outcome = .answered(
                 router: packet.source ?? IPv4Endpoint(rawAddress: 0),
-                roundTripTime: receivedAt - awaiting.sentAt,
+                roundTripTime: receivedAt.duration(since: awaiting.sentAt),
                 kind: .unreachable(code: code))
 
         case .echoRequest, .other:

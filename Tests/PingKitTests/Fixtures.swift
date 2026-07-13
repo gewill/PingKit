@@ -87,7 +87,7 @@ enum Fixtures {
 /// arbitrary inbound datagrams, either manually or automatically per send.
 final class MockPingSocket: PingSocket, @unchecked Sendable {
     private let lock = NSLock()
-    private var handler: (@Sendable ([UInt8], ContinuousClock.Instant) -> Void)?
+    private var handler: (@Sendable ([UInt8], MonotonicTimestamp) -> Void)?
     private var sentDatagrams: [[UInt8]] = []
     private var appliedTTLs: [Int] = []
     private var currentTTL = 64
@@ -118,7 +118,7 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
         lock.withLock { isClosed }
     }
 
-    func activate(receiveHandler: @escaping @Sendable ([UInt8], ContinuousClock.Instant) -> Void) throws {
+    func activate(receiveHandler: @escaping @Sendable ([UInt8], MonotonicTimestamp) -> Void) throws {
         lock.withLock { handler = receiveHandler }
     }
 
@@ -130,10 +130,10 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
         }
         if let routeReply {
             if let reply = routeReply(datagram, ttl) {
-                currentHandler?(reply, ContinuousClock.now)
+                currentHandler?(reply, MonotonicTimestamp.now())
             }
         } else if let autoReply, let reply = autoReply(datagram) {
-            currentHandler?(reply, ContinuousClock.now)
+            currentHandler?(reply, MonotonicTimestamp.now())
         }
     }
 
@@ -147,7 +147,7 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
 
     func inject(_ datagram: [UInt8]) {
         let currentHandler = lock.withLock { handler }
-        currentHandler?(datagram, ContinuousClock.now)
+        currentHandler?(datagram, MonotonicTimestamp.now())
     }
 }
 

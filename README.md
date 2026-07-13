@@ -7,6 +7,10 @@ Modern ICMP ping library for Swift — IPv4 echo over unprivileged ICMP datagram
 sockets (the same facility Apple's SimplePing uses), wrapped in a Swift 6
 `actor` + `AsyncSequence` API. Zero dependencies.
 
+On Apple platforms, RTTs are measured against the kernel's packet-arrival
+timestamps (`SO_TIMESTAMP_MONOTONIC`), so scheduler wakeup latency doesn't
+inflate them.
+
 Design rationale and roadmap live in [PLAN.md](PLAN.md).
 
 ## Requirements

@@ -52,7 +52,7 @@ public actor Pinger {
     private var maxRTT: Duration?
 
     private struct Probe {
-        let sentAt: ContinuousClock.Instant
+        let sentAt: MonotonicTimestamp
         let timeoutTask: Task<Void, Never>
     }
 
@@ -220,7 +220,7 @@ public actor Pinger {
         guard case .running = state, let socket, let continuation else { return false }
         let payload = ICMPv4.payloadPattern(size: configuration.payloadSize)
         let packet = ICMPv4.makeEchoRequest(identifier: identifier, sequence: sequence, payload: payload)
-        let sentAt = ContinuousClock.now
+        let sentAt = MonotonicTimestamp.now()
         do {
             try socket.send(packet)
         } catch {
@@ -239,7 +239,7 @@ public actor Pinger {
         return true
     }
 
-    private func handleDatagram(_ datagram: [UInt8], receivedAt: ContinuousClock.Instant) {
+    private func handleDatagram(_ datagram: [UInt8], receivedAt: MonotonicTimestamp) {
         guard case .running = state else { return }
         guard let packet = ReceivedPacket.parse(datagram) else { return }
 
@@ -254,7 +254,7 @@ public actor Pinger {
             #endif
             guard let probe = pending.removeValue(forKey: sequence) else { return }
             probe.timeoutTask.cancel()
-            let rtt = receivedAt - probe.sentAt
+            let rtt = receivedAt.duration(since: probe.sentAt)
             recordRTT(rtt)
             let reply = PingReply(
                 sequence: sequence,

@@ -76,3 +76,4 @@ The wire-format layer is pure functions, exposed for reuse and testing.
 ### Socket Abstraction
 
 - ``PingSocket``
+- ``MonotonicTimestamp``

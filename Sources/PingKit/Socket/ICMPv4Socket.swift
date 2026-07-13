@@ -31,6 +31,11 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
         // Glibc's variadic fcntl isn't callable from Swift, so Linux skips it.
         let flags = fcntl(fd, F_GETFL, 0)
         _ = fcntl(fd, F_SETFL, flags | O_NONBLOCK)
+        // Ask the kernel to stamp each datagram with its arrival time on the
+        // mach_absolute_time clock, removing scheduler wakeup latency from
+        // RTTs. Best-effort: without it we fall back to read-time stamps.
+        var enable: Int32 = 1
+        _ = setsockopt(fd, SOL_SOCKET, SO_TIMESTAMP_MONOTONIC, &enable, socklen_t(MemoryLayout<Int32>.size))
         #endif
         self.descriptor = fd
         self.destination = destination.rawAddress
@@ -40,19 +45,15 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
         close()
     }
 
-    func activate(receiveHandler: @escaping @Sendable ([UInt8], ContinuousClock.Instant) -> Void) throws {
+    func activate(receiveHandler: @escaping @Sendable ([UInt8], MonotonicTimestamp) -> Void) throws {
         try queue.sync {
             guard !isClosed else { throw PingError.socketCreationFailed(errno: EBADF) }
             guard readSource == nil else { return }
             let fd = descriptor
             let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
             source.setEventHandler {
-                var buffer = [UInt8](repeating: 0, count: 65_535)
-                let count = recv(fd, &buffer, buffer.count, 0)
-                let receivedAt = ContinuousClock.now
-                guard count > 0 else { return }
-                buffer.removeLast(buffer.count - count)
-                receiveHandler(buffer, receivedAt)
+                guard let (datagram, receivedAt) = Self.receiveDatagram(fd) else { return }
+                receiveHandler(datagram, receivedAt)
             }
             // The descriptor is owned by the source once activated; closing it
             // in the cancel handler guarantees no read after close.
@@ -111,4 +112,91 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
         _ = Glibc.close(fd)
         #endif
     }
+
+    // MARK: - Receive path
+
+    #if canImport(Darwin)
+    /// Reads one datagram with `recvmsg`, extracting the kernel's
+    /// `SCM_TIMESTAMP_MONOTONIC` arrival timestamp when present.
+    private static func receiveDatagram(_ fd: Int32) -> ([UInt8], MonotonicTimestamp)? {
+        var buffer = [UInt8](repeating: 0, count: 65_535)
+        var control = [UInt8](repeating: 0, count: 256)
+        var kernelTimestamp: MonotonicTimestamp?
+
+        let count: Int = buffer.withUnsafeMutableBytes { bufferPointer in
+            control.withUnsafeMutableBytes { controlPointer in
+                var vector = iovec(iov_base: bufferPointer.baseAddress, iov_len: bufferPointer.count)
+                return withUnsafeMutablePointer(to: &vector) { vectorPointer in
+                    var message = msghdr(
+                        msg_name: nil,
+                        msg_namelen: 0,
+                        msg_iov: vectorPointer,
+                        msg_iovlen: 1,
+                        msg_control: controlPointer.baseAddress,
+                        msg_controllen: socklen_t(controlPointer.count),
+                        msg_flags: 0)
+                    let received = recvmsg(fd, &message, 0)
+                    if received > 0 {
+                        kernelTimestamp = extractMonotonicTimestamp(
+                            control: controlPointer,
+                            length: Int(message.msg_controllen))
+                    }
+                    return received
+                }
+            }
+        }
+
+        let receivedAt = kernelTimestamp ?? MonotonicTimestamp.now()
+        guard count > 0 else { return nil }
+        buffer.removeLast(buffer.count - count)
+        return (buffer, receivedAt)
+    }
+
+    /// Walks the control messages for `SCM_TIMESTAMP_MONOTONIC`, whose
+    /// payload is a `UInt64` in `mach_absolute_time` units.
+    private static func extractMonotonicTimestamp(
+        control: UnsafeMutableRawBufferPointer,
+        length: Int
+    ) -> MonotonicTimestamp? {
+        // struct cmsghdr { socklen_t cmsg_len; int cmsg_level; int cmsg_type }
+        // followed by the payload at a 4-byte-aligned offset (CMSG_DATA).
+        let headerSize = MemoryLayout<cmsghdr>.size
+        var offset = 0
+        while offset + headerSize <= length {
+            let cmsgLength = Int(control.loadUnaligned(fromByteOffset: offset, as: socklen_t.self))
+            guard cmsgLength >= headerSize, offset + cmsgLength <= length else { return nil }
+            let level = control.loadUnaligned(fromByteOffset: offset + 4, as: Int32.self)
+            let type = control.loadUnaligned(fromByteOffset: offset + 8, as: Int32.self)
+            if level == SOL_SOCKET, type == SCM_TIMESTAMP_MONOTONIC,
+               cmsgLength >= headerSize + MemoryLayout<UInt64>.size {
+                let machTicks = control.loadUnaligned(fromByteOffset: offset + headerSize, as: UInt64.self)
+                return MonotonicTimestamp(nanoseconds: machTicksToNanoseconds(machTicks))
+            }
+            // Advance to the next 4-byte-aligned control message.
+            offset += (cmsgLength + 3) & ~3
+        }
+        return nil
+    }
+
+    private static let timebase: mach_timebase_info_data_t = {
+        var info = mach_timebase_info_data_t()
+        mach_timebase_info(&info)
+        return info
+    }()
+
+    private static func machTicksToNanoseconds(_ ticks: UInt64) -> UInt64 {
+        ticks * UInt64(timebase.numer) / UInt64(timebase.denom)
+    }
+    #else
+    /// Linux: plain `recv`, stamped at read time on the same clock used for
+    /// send timestamps.
+    private static func receiveDatagram(_ fd: Int32) -> ([UInt8], MonotonicTimestamp)? {
+        var buffer = [UInt8](repeating: 0, count: 65_535)
+        let count = recv(fd, &buffer, buffer.count, 0)
+        let receivedAt = MonotonicTimestamp.now()
+        guard count > 0 else { return nil }
+        buffer.removeLast(buffer.count - count)
+        return (buffer, receivedAt)
+    }
+    #endif
 }
