@@ -1,0 +1,27 @@
+name: PingDemo
+options:
+  bundleIdPrefix: com.gewill
+packages:
+  PingKit:
+    path: ../..
+targets:
+  PingDemo:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources: [Sources]
+    dependencies:
+      - package: PingKit
+    info:
+      path: Info.plist
+      properties:
+        UILaunchScreen: {}
+        # Pinging LAN addresses triggers the iOS 14+ local network privacy
+        # prompt; this string is what the prompt shows.
+        NSLocalNetworkUsageDescription: >-
+          PingDemo sends ICMP pings to devices on your local network to
+          measure latency.
+    settings:
+      base:
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "6.0"

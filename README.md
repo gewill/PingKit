@@ -84,6 +84,22 @@ swift run ping-cli 8.8.8.8 -c 5 -i 1 -W 2 -s 56
 Prints `ping(8)`-style output including the closing statistics block; Ctrl-C
 stops an unlimited run and still prints statistics.
 
+## iOS notes
+
+No entitlement is needed; unprivileged ICMP sockets work in the iOS app
+sandbox (CI runs the full test suite, including loopback pings, on the iOS
+Simulator). Two platform behaviors to plan for:
+
+- **Local network privacy**: pinging LAN addresses triggers the iOS 14+
+  local network permission prompt — add `NSLocalNetworkUsageDescription`
+  to your Info.plist. Pinging internet hosts does not.
+- **Suspension**: sockets don't receive while the app is suspended; an
+  in-flight run resumes (with timeouts for missed probes) on return to
+  foreground.
+
+A minimal SwiftUI demo app for on-device testing lives in
+[Examples/PingDemo](Examples/PingDemo).
+
 ## Linux notes
 
 Unprivileged ICMP sockets require `net.ipv4.ping_group_range` to cover the

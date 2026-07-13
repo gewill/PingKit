@@ -108,10 +108,10 @@ Ping/
      - Glibc 分支从未实际编译过，预期要修一轮条件编译小错（SOCK_DGRAM 枚举、常量类型差异）。
    - 顺手加 LICENSE（MIT）和 README badge。
 6. ✅ **M6 发布 v0.1.0**（tag `0.1.0` + GitHub Release 已发；DocC catalog 本地构建通过；`.spi.yml` 就绪。**遗留**：Swift Package Index 收录需要仓库先转 public 并到 swiftpackageindex.com/add-a-package 提交，由仓库所有者操作）
-7. ⏳ **M7 iOS 验证**
-   - CI 加 `xcodebuild -destination 'generic/platform=iOS'` 编译门禁。
-   - 最小 SwiftUI demo App 真机验证：Wi-Fi / 蜂窝、App 进后台挂起后 socket 与在途 probe 的行为（预期：suspend 后 DispatchSource 停摆，恢复后超时补发，需实测确认语义并写进文档）。
-   - 确认 ping 局域网地址是否触发 iOS 14+ 本地网络权限弹窗，README 补充 `NSLocalNetworkUsageDescription` 指引。
+7. 🚧 **M7 iOS 验证**（自动化部分已完成，真机部分待验证）
+   - ✅ CI 加 iOS 门禁：`generic/platform=iOS` 设备目标编译 + iOS 模拟器全量测试（32 个测试含 loopback 集成测试全部通过，证明 ICMP dgram socket 在 iOS 运行时可用）。
+   - ✅ 最小 SwiftUI demo App（`Examples/PingDemo`，xcodegen 生成工程，含 `NSLocalNetworkUsageDescription`），模拟器构建通过。
+   - ⏳ **真机验证（需要设备，见 Examples/PingDemo/README.md 的检查清单）**：Wi-Fi / 蜂窝下 ping 外网；ping 局域网地址确认本地网络权限弹窗行为；挂起/恢复后 socket 与在途 probe 的实际语义（预期：suspend 后 DispatchSource 停摆，恢复后超时补发），实测结果回填本节。
 
 IPv6 作为独立后续里程碑：仅在出现真实需求后，补充 ICMPv6 协议、hop-limit ancillary data、双栈地址选择策略和对应平台测试，不影响首版交付。
 

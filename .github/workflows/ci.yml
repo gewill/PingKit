@@ -20,6 +20,19 @@ jobs:
         # integration tests run for real here.
         run: swift test
 
+  ios:
+    name: iOS
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build for iOS device target
+        run: xcodebuild -scheme PingKit -destination 'generic/platform=iOS' build CODE_SIGNING_ALLOWED=NO
+      - name: Test on iOS Simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available | sed -nE 's/^ *(iPhone [^(]+) \(.*$/\1/p' | head -1)
+          echo "Using simulator: $DEVICE"
+          xcodebuild -scheme PingKit-Package -destination "platform=iOS Simulator,name=$DEVICE" test
+
   linux:
     name: Linux (Swift ${{ matrix.swift }})
     runs-on: ubuntu-24.04
