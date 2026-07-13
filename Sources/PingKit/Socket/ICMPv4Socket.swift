@@ -26,8 +26,12 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
         let fd = Glibc.socket(AF_INET, Int32(SOCK_DGRAM.rawValue), Int32(IPPROTO_ICMP))
         #endif
         guard fd >= 0 else { throw PingError.socketCreationFailed(errno: errno) }
+        #if canImport(Darwin)
+        // Belt-and-suspenders; the read source only fires when data is ready.
+        // Glibc's variadic fcntl isn't callable from Swift, so Linux skips it.
         let flags = fcntl(fd, F_GETFL, 0)
         _ = fcntl(fd, F_SETFL, flags | O_NONBLOCK)
+        #endif
         self.descriptor = fd
         self.destination = destination.rawAddress
     }

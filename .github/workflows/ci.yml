@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  macos:
+    name: macOS
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      - name: Build
+        run: swift build
+      - name: Test
+        # The macOS runner allows unprivileged ICMP sockets, so the loopback
+        # integration tests run for real here.
+        run: swift test
+
+  linux:
+    name: Linux (Swift ${{ matrix.swift }})
+    runs-on: ubuntu-24.04
+    container:
+      image: swift:${{ matrix.swift }}
+      # Privileged so the sysctl below can enable unprivileged ICMP sockets
+      # inside the container; without it the integration tests skip via the
+      # capability probe and only unit tests run.
+      options: --privileged
+    strategy:
+      matrix:
+        swift: ["6.1"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable unprivileged ICMP sockets
+        run: sysctl -w net.ipv4.ping_group_range="0 2147483647" || echo "sysctl unavailable; integration tests will be skipped"
+      - name: Swift version
+        run: swift --version
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test

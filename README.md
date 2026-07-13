@@ -1,5 +1,8 @@
 # PingKit
 
+[![CI](https://github.com/gewill/Ping/actions/workflows/ci.yml/badge.svg)](https://github.com/gewill/Ping/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Modern ICMP ping library for Swift — IPv4 echo over unprivileged ICMP datagram
 sockets (the same facility Apple's SimplePing uses), wrapped in a Swift 6
 `actor` + `AsyncSequence` API. Zero dependencies.
