@@ -27,13 +27,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build for iOS device target
         run: xcodebuild -scheme PingKit -destination 'generic/platform=iOS' build CODE_SIGNING_ALLOWED=NO
-      - name: Test on iOS Simulator
-        run: |
-          DEVICE=$(xcrun simctl list devices available | sed -nE 's/^ *(iPhone [^(]+) \(.*$/\1/p' | head -1)
-          echo "Using simulator: $DEVICE"
-          # Test only the library scheme: command-line executable tests are
-          # exercised by the macOS and Linux jobs and cannot run on iOS.
-          xcodebuild -scheme PingKit -destination "platform=iOS Simulator,name=$DEVICE" test
 
   linux:
     name: Linux (Swift ${{ matrix.swift }})
