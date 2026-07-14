@@ -151,6 +151,8 @@ Ping/
 - **IPv6 Traceroute**：在 IPv4 traceroute 的 Linux error queue 缺口解决后，再统一设计双栈 traceroute 地址与错误语义。
 - **可插拔 Socket 后端（0.4 候选）**：先观察 0.3 的公开 API 收敛反馈；仅当出现自定义传输、外部 Mock、`SOCK_RAW` 或其他后端的真实需求时，重新设计并开放稳定的注入 API，不直接恢复当前内部协议。进入 0.4 的前置条件是至少一个可复现的外部使用场景，并明确生命周期、并发安全和错误语义；没有真实需求则继续留在 Backlog。
 - **`Pinger` 复用语义**：当前一个实例一次运行；如用户反馈需要 reset/restart，再评估。
+- **差错事件携带地址家族**：`.unreachable` 等差错事件目前不带解析后的家族，`.automatic` 模式下消费方（如 Pingman 把 ICMP code 映射成人话）无法区分 ICMPv4/ICMPv6 的 code 编号。做 Pingman Phase 1 时一并设计（例如暴露本次运行解析到的家族，或在事件上带一个 family 标识）。
+- **IPv6 scoped 地址显示接口名**：`IPv6Endpoint.description` 现在输出数字 scope（`fe80::%4`），`ping6` 惯例是接口名（`fe80::%en0`）。用 `if_indextoname` 转换，属显示层小优化。
 
 ## 7. 测试策略
 
