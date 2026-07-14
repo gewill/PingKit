@@ -79,8 +79,10 @@ public struct Ping: AsyncParsableCommand {
         print("PING \(host): \(configuration.payloadSize) data bytes")
 
         var exitCode: Int32 = 0
+        var sawSendFailure = false
         do {
             for try await response in pinger.responses {
+                if case .sendFailed = response { sawSendFailure = true }
                 print(response)
             }
         } catch {
@@ -90,7 +92,9 @@ public struct Ping: AsyncParsableCommand {
 
         let statistics = await pinger.statistics()
         printStatistics(statistics, host: host)
-        if statistics.received == 0 && statistics.transmitted > 0 {
+        // Nothing came back: a failure, whether probes were sent and lost
+        // (transmitted > 0) or never left the socket at all (send failures).
+        if statistics.received == 0 && (statistics.transmitted > 0 || sawSendFailure) {
             exitCode = 2
         }
         if exitCode != 0 { throw ExitCode(exitCode) }
