@@ -4,12 +4,31 @@ import SwiftUI
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var host = "8.8.8.8"
+    @State private var family: Family = .automatic
     @State private var lines: [Line] = []
     @State private var pending: [UInt16: UUID] = [:]
     @State private var summary = ""
     @State private var pingTask: Task<Void, Never>?
 
     private var isRunning: Bool { pingTask != nil }
+
+    /// UI-facing mirror of `PingConfiguration.AddressFamily`, made
+    /// `CaseIterable` so it can drive a `Picker`.
+    private enum Family: String, CaseIterable, Identifiable {
+        case automatic = "Auto"
+        case ipv4 = "IPv4"
+        case ipv6 = "IPv6"
+
+        var id: Self { self }
+
+        var addressFamily: PingConfiguration.AddressFamily {
+            switch self {
+            case .automatic: .automatic
+            case .ipv4: .ipv4
+            case .ipv6: .ipv6
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -27,6 +46,15 @@ struct ContentView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(isRunning ? .red : .accentColor)
                 }
+                .padding(.horizontal)
+
+                // Auto follows system DNS ordering (DNS64/NAT64); force
+                // IPv4/IPv6 to test a specific stack on the current network.
+                Picker("Address family", selection: $family) {
+                    ForEach(Family.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .disabled(isRunning)
                 .padding(.horizontal)
 
                 List(lines) { line in
@@ -66,7 +94,7 @@ struct ContentView: View {
         lines = []
         pending = [:]
         summary = ""
-        let pinger = Pinger(host: host)
+        let pinger = Pinger(host: host, configuration: .init(addressFamily: family.addressFamily))
         pingTask = Task {
             do {
                 for try await response in pinger.responses {
@@ -94,7 +122,10 @@ struct ContentView: View {
             prepend(line)
         case .reply(let reply):
             let ttl = reply.timeToLive.map(String.init) ?? "?"
-            resolve(reply.sequence, text: "seq=\(reply.sequence) ttl=\(ttl) time=\(Self.milliseconds(reply.roundTripTime)) ms")
+            // Show the source address so it's clear which family actually
+            // resolved — on NAT64, "Auto" against an IPv4 literal comes back
+            // from a synthesized IPv6 source.
+            resolve(reply.sequence, text: "seq=\(reply.sequence) from \(reply.from) ttl=\(ttl) time=\(Self.milliseconds(reply.roundTripTime)) ms")
         case .timeout(let sequence):
             resolve(sequence, text: "seq=\(sequence) timed out", isError: true)
         case .unreachable(let sequence, let code):
