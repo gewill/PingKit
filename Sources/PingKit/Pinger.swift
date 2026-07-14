@@ -267,6 +267,12 @@ public actor Pinger {
             // and recovers once the network does. completeProbe() still runs so
             // a bounded .times(n) run terminates instead of hanging on the
             // sequence that never "completes".
+            //
+            // The attempt still counts as transmitted (matching ping(8)), so a
+            // network drop surfaces as packet loss rather than vanishing from
+            // the aggregate. The .sendFailed event carries the errno for
+            // consumers that want to tell "never sent" from "sent but lost".
+            transmitted += 1
             let failureErrno: Int32
             if case let PingError.sendFailed(number) = error { failureErrno = number }
             else { failureErrno = 0 }

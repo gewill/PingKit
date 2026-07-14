@@ -24,7 +24,7 @@ Design rationale and roadmap live in [PLAN.md](PLAN.md).
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/gewill/PingKit.git", from: "0.6.0"),
+    .package(url: "https://github.com/gewill/PingKit.git", from: "0.6.1"),
 ],
 targets: [
     .target(name: "MyTarget", dependencies: [
@@ -87,9 +87,13 @@ Each sequence produces exactly one of two outcomes: a `.sent` followed by a
 terminal event (the socket accepted the probe), or a single `.sendFailed`
 with no `.sent` (the probe never left the socket — e.g. the network is
 briefly unreachable). A `.sendFailed` does **not** end the run: the next
-interval retries and recovers once the network does. So a UI can insert a
-pending row on `.sent` and update it in place, and render `.sendFailed` as a
-standalone failed row. On stop, cancellation, or stream failure, consumers
+interval retries and recovers once the network does. A failed send still
+counts toward `transmitted` (like `ping(8)`), so a network drop surfaces as
+packet loss in `statistics()` rather than vanishing from the aggregate; the
+`.sendFailed` event carries the `errno` for consumers that want to tell
+"never sent" from "sent but lost". So a UI can insert a pending row on
+`.sent` and update it in place, and render `.sendFailed` as a standalone
+failed row. On stop, cancellation, or stream failure, consumers
 should clear any remaining pending rows.
 
 Lifecycle rules:

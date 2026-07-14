@@ -147,9 +147,13 @@ Ping/
 
 ## 6.5 0.6.0 已发布能力
 
-- ✅ **`.sendFailed` 事件（breaking）**：`PingResponse` 新增 `case sendFailed(sequence:errno:)`。新不变量——每个序号二选一：(a) `.sent` + 一个终态事件（socket 收下了包），或 (b) 单独一个 `.sendFailed`（包根本没发出去，无 `.sent`）。发送失败从「致命，整个 run 抛错终止」改为「非致命」：不递增 `transmitted`、不建 pending 探针、不 yield `.sent`；yield `.sendFailed` 后调用 `completeProbe()`（关键：让 `.times(n)` 仍能终止，否则失败序号永不完成、流挂死）并让发送循环继续，网络恢复后自动恢复回包。一次性 `ping(_:)` 仍抛 `PingError.sendFailed`。统计口径：失败发送不计入 `transmitted`。实测 `pingkit-cli 8.8.8.8 -6`（IPv4 字面量强制 IPv6，errno 22）逐包报 send failed 且 run 不中止。消费方 `switch` 需新增 case。
+- ✅ **`.sendFailed` 事件（breaking）**：`PingResponse` 新增 `case sendFailed(sequence:errno:)`。新不变量——每个序号二选一：(a) `.sent` + 一个终态事件（socket 收下了包），或 (b) 单独一个 `.sendFailed`（包根本没发出去，无 `.sent`）。发送失败从「致命，整个 run 抛错终止」改为「非致命」：不递增 `transmitted`、不建 pending 探针、不 yield `.sent`；yield `.sendFailed` 后调用 `completeProbe()`（关键：让 `.times(n)` 仍能终止，否则失败序号永不完成、流挂死）并让发送循环继续，网络恢复后自动恢复回包。一次性 `ping(_:)` 仍抛 `PingError.sendFailed`。统计口径：初版（0.6.0）失败发送不计入 `transmitted`，0.6.1 改为计入（见下）。实测 `pingkit-cli 8.8.8.8 -6`（IPv4 字面量强制 IPv6，errno 22）逐包报 send failed 且 run 不中止。消费方 `switch` 需新增 case。
 
-## 6.6 Backlog（有价值但不排期）
+## 6.6 0.6.1 待发布能力
+
+- ✅ **失败发送计入丢包**：`Pinger` 现在把发送失败也计入 `transmitted`（不计 `received`），于是体现为 `lossRate` 丢包，与 `ping(8)` 一致。此前（0.6.0）不计入，导致断网期间的缺口从丢包率里消失（`statistics()` 显示 0% loss，误导只看聚合的消费方）。`.sendFailed` 事件仍单独保留，消费方要区分「没发出去」vs「发了没回」照样能做。依据：真机断网抓包中系统 `ping(8)` 对 IPv4 目标 `sendto: No route to host`（errno 65）期间仍把探测计入 transmitted，尾部 26 transmitted / 17 received / 34.6% loss。行为变更，无 API 破坏。实测 `pingkit-cli 8.8.8.8 -6 -c 3` → `3 transmitted, 0 received, 100% loss`，exit 2。
+
+## 6.7 Backlog（有价值但不排期）
 
 - **Linux Traceroute 完整中间跳**：读取 ICMP socket error queue（`MSG_ERRQUEUE`）。
 - **IPv6 Traceroute**：在 IPv4 traceroute 的 Linux error queue 缺口解决后，再统一设计双栈 traceroute 地址与错误语义。
