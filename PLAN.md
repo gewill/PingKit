@@ -1,6 +1,6 @@
 # Swift Ping 库规划（PingKit）
 
-> 状态：M1–M8 已完成，当前版本 0.3.0；0.4.0 待发布，IPv6 进入 0.5.0。更新日期：2026-07-14
+> 状态：M1–M8 已完成，当前版本 0.5.0（含 0.4.0 的 TTL/.sent 与 0.5.0 的 IPv6，一并随 0.5.0 发布）。更新日期：2026-07-14
 
 ## 1. 背景与现有生态
 
@@ -109,7 +109,7 @@ Ping/
      - Linux：ubuntu runner + Swift 6 工具链；先 `sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"` 打开免特权 ICMP，再 `swift test`。这样 Linux 从"best-effort 未编译验证"直接升级为 CI 持续验证。
      - Glibc 分支已在 CI 编译并测试，覆盖 `SOCK_DGRAM` 枚举和常量类型差异。
    - 顺手加 LICENSE（MIT）和 README badge。
-6. ✅ **M6 首次发布**（`0.1.0` 与 GitHub Release 已发布；DocC catalog 本地构建通过；`.spi.yml` 就绪。当前最新版本为 `0.3.0`。**遗留**：Swift Package Index 收录需要仓库先转 public 并到 swiftpackageindex.com/add-a-package 提交，由仓库所有者操作）
+6. ✅ **M6 首次发布**（`0.1.0` 与 GitHub Release 已发布；DocC catalog 本地构建通过；`.spi.yml` 就绪。当前最新版本为 `0.5.0`。**遗留**：Swift Package Index 收录需要仓库先转 public 并到 swiftpackageindex.com/add-a-package 提交，由仓库所有者操作）
 7. ✅ **M7 iOS 验证**
    - ✅ CI 加 iOS 门禁：`generic/platform=iOS` 设备目标编译 + iOS 模拟器全量测试（含 loopback 集成测试，证明 ICMP dgram socket 在 iOS 运行时可用）。
    - ✅ 最小 SwiftUI demo App（`Examples/PingDemo`，xcodegen 生成工程，含 `NSLocalNetworkUsageDescription`），模拟器构建通过。
@@ -135,12 +135,12 @@ Ping/
 - ✅ **公开 API 收敛**（已实现，进 0.3.0，breaking）：仅用于内部测试注入的 `PingSocket`、`SocketFactory`、`HostResolver` 和 `MonotonicTimestamp` 不再暴露为公共契约。
 - ✅ **单消费者错误统一**（已实现，进 0.3.0，breaking）：`PingError.responsesAlreadyConsumed` 重命名为 `sequenceAlreadyConsumed`，同时适用于 `Pinger.responses` 与 `Tracer.hops`，不再携带错误的 Pinger 专属文案。
 
-## 6.3 0.4.0 待发布能力
+## 6.3 0.4.0 能力（随 0.5.0 发布）
 
 - ✅ **出包 TTL 配置**（进 0.4.0）：`PingConfiguration.timeToLive`（1...255，默认 `nil` 走系统默认），启动时经 `PingSocket.setTimeToLive` 应用到 socket，setsockopt 失败在首个 `next()` 上抛 `socketOptionFailed`。CLI ping 模式增加 `-m ttl`（对齐 `ping(8)`）。实测 `-m 1` 打 8.8.8.8 全部收到网关 Time Exceeded。
 - ✅ **`.sent` 事件**（进 0.4.0，breaking）：`PingResponse` 新增 `.sent(sequence:)`，每个探测包发出后、终态事件（reply/timeout/unreachable/timeExceeded）之前投递，供 UI 实现"发包即插 pending 行、回包原位更新"（Pingman 迁移的核心 UX）。`Pinger.ping` 一次性 API 自动跳过该事件；demo App 已改为 pending 行模式。消费方的 `switch` 需新增 case。
 
-## 6.4 0.5.0 待发布能力
+## 6.4 0.5.0 已发布能力
 
 - ✅ **IPv6 Ping**：完整内容见 M8；这是 `PingReply.from` 类型变化与 `PingResponse` 新增 ICMPv6 差错 case 的 breaking minor release。
 - ✅ **正式 CLI**：命令统一为 `pingkit`（产品名为 `pingkit-cli`——与 `PingKit` 库名在大小写不敏感文件系统上冲突，会破坏 xcodebuild 的 per-target 构建目录），用 `swift-argument-parser` 提供 ping/trace 子命令、类型化校验、自动 help 与解析测试；依赖仅链接 CLI target。iOS CI 通过共享 scheme `PingKit-LibraryTests` 只测库目标（executable target 无法进 iOS test graph）。
