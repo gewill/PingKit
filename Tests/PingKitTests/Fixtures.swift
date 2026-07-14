@@ -87,12 +87,13 @@ enum Fixtures {
 /// arbitrary inbound datagrams, either manually or automatically per send.
 final class MockPingSocket: PingSocket, @unchecked Sendable {
     private let lock = NSLock()
-    private var handler: (@Sendable ([UInt8], MonotonicTimestamp) -> Void)?
+    private var handler: (@Sendable (SocketDatagram) -> Void)?
     private var sentDatagrams: [[UInt8]] = []
     private var appliedTTLs: [Int] = []
     private var currentTTL = 64
     private var isClosed = false
     private let autoReply: (@Sendable ([UInt8]) -> [UInt8]?)?
+    private let autoDatagram: (@Sendable ([UInt8]) -> SocketDatagram?)?
     /// TTL-aware reply strategy for traceroute tests; takes precedence over
     /// `autoReply` when set.
     private let routeReply: (@Sendable (_ datagram: [UInt8], _ ttl: Int) -> [UInt8]?)?
@@ -101,10 +102,12 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
 
     init(
         autoReply: (@Sendable ([UInt8]) -> [UInt8]?)? = nil,
+        autoDatagram: (@Sendable ([UInt8]) -> SocketDatagram?)? = nil,
         routeReply: (@Sendable ([UInt8], Int) -> [UInt8]?)? = nil,
         setTimeToLiveError: PingError? = nil
     ) {
         self.autoReply = autoReply
+        self.autoDatagram = autoDatagram
         self.routeReply = routeReply
         self.setTimeToLiveError = setTimeToLiveError
     }
@@ -122,7 +125,7 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
         lock.withLock { isClosed }
     }
 
-    func activate(receiveHandler: @escaping @Sendable ([UInt8], MonotonicTimestamp) -> Void) throws {
+    func activate(receiveHandler: @escaping @Sendable (SocketDatagram) -> Void) throws {
         lock.withLock { handler = receiveHandler }
     }
 
@@ -132,12 +135,14 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
             appliedTTLs.append(currentTTL)
             return (handler, currentTTL)
         }
-        if let routeReply {
+        if let autoDatagram, let datagram = autoDatagram(datagram) {
+            currentHandler?(datagram)
+        } else if let routeReply {
             if let reply = routeReply(datagram, ttl) {
-                currentHandler?(reply, MonotonicTimestamp.now())
+                currentHandler?(SocketDatagram(bytes: reply, receivedAt: MonotonicTimestamp.now()))
             }
         } else if let autoReply, let reply = autoReply(datagram) {
-            currentHandler?(reply, MonotonicTimestamp.now())
+            currentHandler?(SocketDatagram(bytes: reply, receivedAt: MonotonicTimestamp.now()))
         }
     }
 
@@ -152,7 +157,7 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
 
     func inject(_ datagram: [UInt8]) {
         let currentHandler = lock.withLock { handler }
-        currentHandler?(datagram, MonotonicTimestamp.now())
+        currentHandler?(SocketDatagram(bytes: datagram, receivedAt: MonotonicTimestamp.now()))
     }
 }
 
@@ -161,7 +166,7 @@ func makePinger(configuration: PingConfiguration, socket: MockPingSocket) -> Pin
         host: "test.invalid",
         configuration: configuration,
         socketFactory: { _ in socket },
-        resolver: { _ in IPv4Endpoint(127, 0, 0, 1) })
+        resolver: { _ in .ipv4(IPv4Endpoint(127, 0, 0, 1)) })
 }
 
 /// Holds replies until every request is pending, then delivers one burst in
@@ -170,26 +175,28 @@ func makePinger(configuration: PingConfiguration, socket: MockPingSocket) -> Pin
 final class BurstReplySocket: PingSocket, @unchecked Sendable {
     private let lock = NSLock()
     private let replyCount: Int
-    private var handler: (@Sendable ([UInt8], MonotonicTimestamp) -> Void)?
+    private var handler: (@Sendable (SocketDatagram) -> Void)?
     private var requests: [[UInt8]] = []
 
     init(replyCount: Int) {
         self.replyCount = replyCount
     }
 
-    func activate(receiveHandler: @escaping @Sendable ([UInt8], MonotonicTimestamp) -> Void) throws {
+    func activate(receiveHandler: @escaping @Sendable (SocketDatagram) -> Void) throws {
         lock.withLock { handler = receiveHandler }
     }
 
     func send(_ datagram: [UInt8]) throws {
-        let delivery = lock.withLock { () -> ((@Sendable ([UInt8], MonotonicTimestamp) -> Void), [[UInt8]])? in
+        let delivery = lock.withLock { () -> ((@Sendable (SocketDatagram) -> Void), [[UInt8]])? in
             requests.append(datagram)
             guard requests.count == replyCount, let handler else { return nil }
             return (handler, requests)
         }
         guard let (handler, requests) = delivery else { return }
         for request in requests {
-            handler(Fixtures.replyDatagram(forRequest: request), MonotonicTimestamp.now())
+            handler(SocketDatagram(
+                bytes: Fixtures.replyDatagram(forRequest: request),
+                receivedAt: MonotonicTimestamp.now()))
         }
     }
 

@@ -80,6 +80,60 @@ import Testing
         #expect(events == [.sent(sequence: 0), .timeout(sequence: 0)])
     }
 
+    @Test func ipv6ReplyIncludesSourceAndHopLimit() async throws {
+        let loopback = IPv6Endpoint(bytes: [UInt8](repeating: 0, count: 15) + [1])!
+        let socket = MockPingSocket(autoDatagram: { request in
+            var reply = request
+            reply[0] = 129
+            return SocketDatagram(
+                bytes: reply,
+                receivedAt: MonotonicTimestamp.now(),
+                source: .ipv6(loopback),
+                hopLimit: 64)
+        })
+        let pinger = Pinger(
+            host: "::1",
+            configuration: PingConfiguration(count: .times(1), addressFamily: .ipv6),
+            socketFactory: { _ in socket },
+            resolver: { _ in .ipv6(loopback) })
+
+        var events: [PingResponse] = []
+        for try await response in pinger.responses { events.append(response) }
+
+        #expect(socket.sent.first?.first == 128)
+        #expect(events.first == .sent(sequence: 0))
+        guard case .reply(let reply)? = events.last else {
+            Issue.record("expected IPv6 reply")
+            return
+        }
+        #expect(reply.from == .ipv6(loopback))
+        #expect(reply.timeToLive == 64)
+        #expect(reply.byteCount == 64)
+    }
+
+    @Test func ipv6PacketTooBigMapped() async throws {
+        let loopback = IPv6Endpoint(bytes: [UInt8](repeating: 0, count: 15) + [1])!
+        let socket = MockPingSocket(autoDatagram: { request in
+            var ipv6Header = [UInt8](repeating: 0, count: 40)
+            ipv6Header[0] = 0x60
+            ipv6Header[6] = 58
+            return SocketDatagram(
+                bytes: [2, 0, 0, 0, 0, 0, 5, 0] + ipv6Header + request,
+                receivedAt: MonotonicTimestamp.now(),
+                source: .ipv6(loopback))
+        })
+        let pinger = Pinger(
+            host: "::1",
+            configuration: PingConfiguration(count: .times(1), addressFamily: .ipv6),
+            socketFactory: { _ in socket },
+            resolver: { _ in .ipv6(loopback) })
+
+        var events: [PingResponse] = []
+        for try await response in pinger.responses { events.append(response) }
+
+        #expect(events == [.sent(sequence: 0), .packetTooBig(sequence: 0, mtu: 1280)])
+    }
+
     @Test func repliesArriveInOrder() async throws {
         let socket = MockPingSocket(autoReply: { Fixtures.replyDatagram(forRequest: $0) })
         let pinger = makePinger(
@@ -96,7 +150,7 @@ import Testing
             sequences.append(reply.sequence)
             #expect(reply.timeToLive == 64)
             #expect(reply.byteCount == 64)
-            #expect(reply.from == IPv4Endpoint(127, 0, 0, 1))
+            #expect(reply.from == .ipv4(IPv4Endpoint(127, 0, 0, 1)))
             #expect(reply.roundTripTime >= .zero)
         }
         #expect(sequences == [0, 1, 2])
@@ -121,7 +175,7 @@ import Testing
                 timeout: .seconds(60),
                 count: .times(replyCount)),
             socketFactory: { _ in socket },
-            resolver: { _ in IPv4Endpoint(127, 0, 0, 1) })
+            resolver: { _ in .ipv4(IPv4Endpoint(127, 0, 0, 1)) })
 
         var sequences: [UInt16] = []
         for try await response in pinger.responses {
@@ -146,13 +200,16 @@ import Testing
         for try await response in pinger.responses {
             events.append(response)
         }
-        // Sends interleave with timeouts on a timing-dependent schedule, so
-        // assert each kind's order separately.
+        // Sends interleave with timeouts on a timing-dependent schedule. Each
+        // timeout has its own task, so cross-probe timeout order is unspecified.
         let sends = events.filter { if case .sent = $0 { true } else { false } }
-        let timeouts = events.filter { if case .timeout = $0 { true } else { false } }
+        let timeoutSequences = events.compactMap { response -> UInt16? in
+            if case .timeout(let sequence) = response { return sequence }
+            return nil
+        }
         #expect(events.count == 4)
         #expect(sends == [.sent(sequence: 0), .sent(sequence: 1)])
-        #expect(timeouts == [.timeout(sequence: 0), .timeout(sequence: 1)])
+        #expect(timeoutSequences.sorted() == [0, 1])
 
         let statistics = await pinger.statistics()
         #expect(statistics.transmitted == 2)
@@ -341,7 +398,7 @@ import Testing
             host: "test.invalid",
             configuration: PingConfiguration(count: .times(1)),
             socketFactory: { _ in throw PingError.socketCreationFailed(errno: 1) },
-            resolver: { _ in IPv4Endpoint(127, 0, 0, 1) })
+            resolver: { _ in .ipv4(IPv4Endpoint(127, 0, 0, 1)) })
 
         await #expect(throws: PingError.socketCreationFailed(errno: 1)) {
             for try await _ in pinger.responses {}

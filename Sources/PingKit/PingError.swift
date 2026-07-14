@@ -17,6 +17,8 @@ public enum PingError: Error, Sendable, Equatable {
     case timedOut
     case destinationUnreachable(code: UInt8)
     case timeToLiveExceeded
+    case packetTooBig(mtu: UInt32)
+    case parameterProblem(code: UInt8, pointer: UInt32)
 }
 
 extension PingError: CustomStringConvertible {
@@ -44,6 +46,10 @@ extension PingError: CustomStringConvertible {
             return "destination unreachable (ICMP code \(code))"
         case .timeToLiveExceeded:
             return "time to live exceeded in transit"
+        case .packetTooBig(let mtu):
+            return "packet too big for IPv6 path (MTU \(mtu))"
+        case .parameterProblem(let code, let pointer):
+            return "IPv6 parameter problem (code \(code), pointer \(pointer))"
         }
     }
 

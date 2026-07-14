@@ -1,13 +1,15 @@
 # ``PingKit``
 
-Modern ICMP ping for Swift: IPv4 echo over unprivileged ICMP datagram
-sockets, exposed as a Swift 6 `actor` with an `AsyncSequence` API.
+Modern ICMP ping for Swift: dual-stack IPv4 / IPv6 echo over unprivileged
+ICMP datagram sockets, exposed as a Swift 6 `actor` with an `AsyncSequence`
+API.
 
 ## Overview
 
 PingKit sends ICMP echo requests without root privileges or special
 entitlements, using the same kernel facility as Apple's SimplePing sample
-(`SOCK_DGRAM` + `IPPROTO_ICMP`). It has no runtime dependencies.
+(`SOCK_DGRAM` + `IPPROTO_ICMP` / `IPPROTO_ICMPV6`). It has no runtime
+dependencies.
 
 ```swift
 // One-shot
@@ -27,6 +29,10 @@ for try await response in pinger.responses {
         print("seq=\(seq) unreachable, code \(code)")
     case .timeExceeded(let seq):
         print("seq=\(seq) TTL exceeded")
+    case .packetTooBig(let seq, let mtu):
+        print("seq=\(seq) packet too big, MTU \(mtu)")
+    case .parameterProblem(let seq, let code, let pointer):
+        print("seq=\(seq) parameter problem, code \(code), pointer \(pointer)")
     }
 }
 let stats = await pinger.statistics()
@@ -61,7 +67,9 @@ socket deterministically.
 
 ### Addressing
 
+- ``IPAddress``
 - ``IPv4Endpoint``
+- ``IPv6Endpoint``
 
 ### Protocol Layer
 
@@ -69,6 +77,8 @@ The wire-format layer is pure functions, exposed for reuse and testing.
 
 - ``ICMPv4``
 - ``ICMPv4Message``
+- ``ICMPv6``
+- ``ICMPv6Message``
 - ``EmbeddedProbe``
 - ``IPv4``
 - ``IPv4Header``

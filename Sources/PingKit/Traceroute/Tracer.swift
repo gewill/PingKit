@@ -17,10 +17,13 @@
 /// error queue instead, which PingKit doesn't read yet — intermediate hops
 /// show as timeouts on Linux; the destination reply still arrives.
 public actor Tracer {
+    typealias SocketFactory = @Sendable (IPv4Endpoint) throws -> any PingSocket
+    typealias HostResolver = @Sendable (String) async throws -> IPv4Endpoint
+
     private let host: String
     private let configuration: TracerouteConfiguration
-    private let socketFactory: Pinger.SocketFactory
-    private let resolver: Pinger.HostResolver
+    private let socketFactory: SocketFactory
+    private let resolver: HostResolver
     private let identifier = UInt16.random(in: 1 ... .max)
 
     private enum State {
@@ -63,8 +66,8 @@ public actor Tracer {
     init(
         host: String,
         configuration: TracerouteConfiguration,
-        socketFactory: @escaping Pinger.SocketFactory,
-        resolver: @escaping Pinger.HostResolver
+        socketFactory: @escaping SocketFactory,
+        resolver: @escaping HostResolver
     ) {
         self.host = host
         self.configuration = configuration
@@ -131,9 +134,9 @@ public actor Tracer {
             self.socket = socket
             let (datagrams, receiveContinuation) = AsyncStream<SocketDatagram>.makeStream()
             self.receiveContinuation = receiveContinuation
-            try socket.activate { [weak self] datagram, receivedAt in
+            try socket.activate { [weak self] datagram in
                 guard self != nil else { return }
-                receiveContinuation.yield(SocketDatagram(bytes: datagram, receivedAt: receivedAt))
+                receiveContinuation.yield(datagram)
             }
             receiveTask = Task { [weak self] in
                 for await datagram in datagrams {

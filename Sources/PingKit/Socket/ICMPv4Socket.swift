@@ -45,7 +45,7 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
         close()
     }
 
-    func activate(receiveHandler: @escaping @Sendable ([UInt8], MonotonicTimestamp) -> Void) throws {
+    func activate(receiveHandler: @escaping @Sendable (SocketDatagram) -> Void) throws {
         try queue.sync {
             guard !isClosed else { throw PingError.socketCreationFailed(errno: EBADF) }
             guard readSource == nil else { return }
@@ -53,7 +53,7 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
             let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
             source.setEventHandler {
                 guard let (datagram, receivedAt) = Self.receiveDatagram(fd) else { return }
-                receiveHandler(datagram, receivedAt)
+                receiveHandler(SocketDatagram(bytes: datagram, receivedAt: receivedAt))
             }
             // The descriptor is owned by the source once activated; closing it
             // in the cancel handler guarantees no read after close.
@@ -170,7 +170,7 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
             if level == SOL_SOCKET, type == SCM_TIMESTAMP_MONOTONIC,
                cmsgLength >= headerSize + MemoryLayout<UInt64>.size {
                 let machTicks = control.loadUnaligned(fromByteOffset: offset + headerSize, as: UInt64.self)
-                return MonotonicTimestamp(nanoseconds: machTicksToNanoseconds(machTicks))
+                return MonotonicTimestamp.fromMachAbsoluteTime(machTicks)
             }
             // Advance to the next 4-byte-aligned control message.
             offset += (cmsgLength + 3) & ~3
@@ -178,15 +178,6 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
         return nil
     }
 
-    private static let timebase: mach_timebase_info_data_t = {
-        var info = mach_timebase_info_data_t()
-        mach_timebase_info(&info)
-        return info
-    }()
-
-    private static func machTicksToNanoseconds(_ ticks: UInt64) -> UInt64 {
-        ticks * UInt64(timebase.numer) / UInt64(timebase.denom)
-    }
     #else
     /// Linux: plain `recv`, stamped at read time on the same clock used for
     /// send timestamps.
