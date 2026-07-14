@@ -158,8 +158,11 @@ import Testing
         #expect(reply.sequence == 1)
 
         let statistics = await pinger.statistics()
-        #expect(statistics.transmitted == 1)   // the failed send is not counted
+        // Failed sends count as transmitted (like ping(8)), so they surface as
+        // loss rather than vanishing from the aggregate.
+        #expect(statistics.transmitted == 2)
         #expect(statistics.received == 1)
+        #expect(statistics.lost == 1)
     }
 
     @Test func sessionRecoversAfterSendFailure() async throws {
@@ -183,8 +186,9 @@ import Testing
         #expect(replies == [2, 3])
 
         let statistics = await pinger.statistics()
-        #expect(statistics.transmitted == 2)
+        #expect(statistics.transmitted == 4)   // 2 failed sends + 2 delivered
         #expect(statistics.received == 2)
+        #expect(statistics.lost == 2)
     }
 
     @Test func allSendsFailingStillTerminates() async throws {
@@ -205,8 +209,9 @@ import Testing
         ])
 
         let statistics = await pinger.statistics()
-        #expect(statistics.transmitted == 0)
+        #expect(statistics.transmitted == 3)   // all attempts count, all lost
         #expect(statistics.received == 0)
+        #expect(statistics.lossRate == 1)
         #expect(socket.closed)
     }
 
