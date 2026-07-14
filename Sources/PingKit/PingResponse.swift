@@ -7,7 +7,9 @@ public enum PingResponse: Sendable, Equatable {
     case reply(PingReply)
     case timeout(sequence: UInt16)
     /// The network returned Destination Unreachable (ICMPv4 type 3 or
-    /// ICMPv6 type 1) for this probe.
+    /// ICMPv6 type 1) for this probe. The two families number their codes
+    /// differently; interpret `code` according to the address family the
+    /// run resolved to.
     case unreachable(sequence: UInt16, code: UInt8)
     /// The network returned Time Exceeded (ICMPv4 type 11 or ICMPv6 type 3)
     /// for this probe.

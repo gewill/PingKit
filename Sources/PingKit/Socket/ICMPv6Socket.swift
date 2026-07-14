@@ -50,9 +50,40 @@ final class ICMPv6Socket: PingSocket, @unchecked Sendable {
             Self.closeDescriptor(fd)
             throw PingError.socketOptionFailed(errno: errno)
         }
+
+        #if canImport(Darwin)
+        // Only wake up for the message types ping consumes; without a filter
+        // the socket also receives NDP/RA multicast traffic. Best-effort:
+        // unfiltered reads are still handled (and dropped) correctly.
+        // Linux ping sockets already deliver matching echo replies only and
+        // don't support this raw-socket option.
+        var filter = Self.makeEchoFilter()
+        _ = setsockopt(
+            fd, Int32(IPPROTO_ICMPV6), ICMP6_FILTER,
+            &filter, socklen_t(MemoryLayout<icmp6_filter>.size))
+        #endif
+
         self.descriptor = fd
         self.destination = destination
     }
+
+    #if canImport(Darwin)
+    /// Darwin filter semantics: a set bit passes the type; zero blocks all.
+    private static func makeEchoFilter() -> icmp6_filter {
+        let passTypes: [UInt8] = [
+            ICMPv6.destinationUnreachableType, ICMPv6.packetTooBigType,
+            ICMPv6.timeExceededType, ICMPv6.parameterProblemType, ICMPv6.echoReplyType,
+        ]
+        var filter = icmp6_filter()
+        withUnsafeMutableBytes(of: &filter) { raw in
+            let words = raw.bindMemory(to: UInt32.self)
+            for type in passTypes {
+                words[Int(type) >> 5] |= UInt32(1) << (UInt32(type) & 31)
+            }
+        }
+        return filter
+    }
+    #endif
 
     deinit { close() }
 

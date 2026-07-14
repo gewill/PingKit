@@ -38,6 +38,12 @@ import Testing
         }
     }
 
+    @Test func traceRejectsIPv6Literals() {
+        #expect(throws: (any Error).self) {
+            try Trace.parse(["::1"])
+        }
+    }
+
     @Test func rejectsOutOfRangeValues() {
         #expect(throws: (any Error).self) {
             try Ping.parse(["example.com", "-c", "0"])

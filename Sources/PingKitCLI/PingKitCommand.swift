@@ -13,8 +13,6 @@ public struct PingKitCommand: AsyncParsableCommand {
         defaultSubcommand: Ping.self)
 
     public init() {}
-
-    public mutating func run() async throws {}
 }
 
 @available(macOS 10.15, macCatalyst 13, iOS 13, tvOS 13, watchOS 6, *)
@@ -132,6 +130,10 @@ public struct Trace: AsyncParsableCommand {
     public init() {}
 
     public mutating func validate() throws {
+        // Hostnames can't contain colons, so this catches IPv6 literals.
+        guard !host.contains(":") else {
+            throw ValidationError("trace supports IPv4 hosts only")
+        }
         guard (1...255).contains(maxHops) else {
             throw ValidationError("--max-hops must be between 1 and 255")
         }

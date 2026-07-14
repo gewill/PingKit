@@ -248,7 +248,7 @@ public actor Pinger {
 
     private func sendProbe(sequence: UInt16) -> Bool {
         guard case .running = state, let endpoint, let socket, let continuation else { return false }
-        let payload = (0..<configuration.payloadSize).map { UInt8(truncatingIfNeeded: $0) }
+        let payload = ICMPv4.payloadPattern(size: configuration.payloadSize)
         let packet: [UInt8]
         switch endpoint {
         case .ipv4:
@@ -293,7 +293,7 @@ public actor Pinger {
             handleReply(
                 identifier: replyIdentifier,
                 sequence: sequence,
-                payloadCount: payloadCount,
+                messageSize: ICMPv4.headerSize + payloadCount,
                 from: .ipv4(packet.source ?? destination),
                 hopLimit: packet.timeToLive,
                 receivedAt: datagram.receivedAt)
@@ -318,7 +318,7 @@ public actor Pinger {
             handleReply(
                 identifier: replyIdentifier,
                 sequence: sequence,
-                payloadCount: payloadCount,
+                messageSize: ICMPv6.headerSize + payloadCount,
                 from: datagram.source ?? .ipv6(destination),
                 hopLimit: datagram.hopLimit,
                 receivedAt: datagram.receivedAt)
@@ -345,7 +345,7 @@ public actor Pinger {
     private func handleReply(
         identifier replyIdentifier: UInt16,
         sequence: UInt16,
-        payloadCount: Int,
+        messageSize: Int,
         from source: IPAddress,
         hopLimit: UInt8?,
         receivedAt: MonotonicTimestamp
@@ -365,7 +365,7 @@ public actor Pinger {
             roundTripTime: rtt,
             timeToLive: hopLimit,
             from: source,
-            byteCount: ICMPv4.headerSize + payloadCount)))
+            byteCount: messageSize)))
         completeProbe()
     }
 
