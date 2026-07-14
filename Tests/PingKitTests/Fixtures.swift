@@ -99,17 +99,25 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
     private let routeReply: (@Sendable (_ datagram: [UInt8], _ ttl: Int) -> [UInt8]?)?
     /// When set, `setTimeToLive` throws this error.
     private let setTimeToLiveError: PingError?
+    /// Given the zero-based send index (== probe sequence), returns an error to
+    /// throw from `send`, or `nil` to send normally. Lets a test fail forever
+    /// or fail-then-recover. A failed send records no datagram, mirroring the
+    /// real socket where nothing reached the wire.
+    private let sendErrorForIndex: (@Sendable (Int) -> PingError?)?
+    private var sendAttempts = 0
 
     init(
         autoReply: (@Sendable ([UInt8]) -> [UInt8]?)? = nil,
         autoDatagram: (@Sendable ([UInt8]) -> SocketDatagram?)? = nil,
         routeReply: (@Sendable ([UInt8], Int) -> [UInt8]?)? = nil,
-        setTimeToLiveError: PingError? = nil
+        setTimeToLiveError: PingError? = nil,
+        sendErrorForIndex: (@Sendable (Int) -> PingError?)? = nil
     ) {
         self.autoReply = autoReply
         self.autoDatagram = autoDatagram
         self.routeReply = routeReply
         self.setTimeToLiveError = setTimeToLiveError
+        self.sendErrorForIndex = sendErrorForIndex
     }
 
     var sent: [[UInt8]] {
@@ -130,6 +138,12 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
     }
 
     func send(_ datagram: [UInt8]) throws {
+        let sendError = lock.withLock { () -> PingError? in
+            let index = sendAttempts
+            sendAttempts += 1
+            return sendErrorForIndex?(index)
+        }
+        if let sendError { throw sendError }
         let (currentHandler, ttl) = lock.withLock {
             sentDatagrams.append(datagram)
             appliedTTLs.append(currentTTL)

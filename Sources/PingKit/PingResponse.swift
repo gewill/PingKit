@@ -3,7 +3,16 @@ public enum PingResponse: Sendable, Equatable {
     /// An echo request left the socket. While the run remains active, one
     /// terminal event follows for the same sequence, so UIs can show a
     /// pending row per probe and update it in place.
+    ///
+    /// Each sequence produces exactly one of two outcomes: a `.sent` followed
+    /// by a terminal event (the socket accepted the probe), or a single
+    /// `.sendFailed` with no `.sent` (the probe never left the socket).
     case sent(sequence: UInt16)
+    /// The socket rejected the probe, so it never left the host — no `.sent`
+    /// is emitted for this sequence. The run continues (a transient failure
+    /// recovers on the next interval); `errno` is the underlying `send`
+    /// error, or 0 if unavailable.
+    case sendFailed(sequence: UInt16, errno: Int32)
     case reply(PingReply)
     case timeout(sequence: UInt16)
     /// The network returned Destination Unreachable (ICMPv4 type 3 or

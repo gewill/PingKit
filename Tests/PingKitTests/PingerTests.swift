@@ -134,6 +134,82 @@ import Testing
         #expect(events == [.sent(sequence: 0), .packetTooBig(sequence: 0, mtu: 1280)])
     }
 
+    @Test func sendFailureDoesNotEndSession() async throws {
+        // seq 0 fails to send; seq 1 sends and replies. The failed probe must
+        // not emit .sent and must not abort the run.
+        let socket = MockPingSocket(
+            autoReply: { Fixtures.replyDatagram(forRequest: $0) },
+            sendErrorForIndex: { $0 == 0 ? .sendFailed(errno: 65) : nil })
+        let pinger = makePinger(
+            configuration: PingConfiguration(interval: .milliseconds(5), timeout: .seconds(1), count: .times(2)),
+            socket: socket)
+
+        var events: [PingResponse] = []
+        for try await response in pinger.responses { events.append(response) }
+
+        #expect(events.first == .sendFailed(sequence: 0, errno: 65))
+        // seq 0 never gets a .sent; seq 1 does, followed by its reply.
+        #expect(!events.contains(.sent(sequence: 0)))
+        #expect(events.contains(.sent(sequence: 1)))
+        guard case .reply(let reply)? = events.last else {
+            Issue.record("expected a reply for seq 1, got \(String(describing: events.last))")
+            return
+        }
+        #expect(reply.sequence == 1)
+
+        let statistics = await pinger.statistics()
+        #expect(statistics.transmitted == 1)   // the failed send is not counted
+        #expect(statistics.received == 1)
+    }
+
+    @Test func sessionRecoversAfterSendFailure() async throws {
+        // First two sends fail (network down), then recovery: the run keeps
+        // going and later probes reply normally.
+        let socket = MockPingSocket(
+            autoReply: { Fixtures.replyDatagram(forRequest: $0) },
+            sendErrorForIndex: { $0 < 2 ? .sendFailed(errno: 65) : nil })
+        let pinger = makePinger(
+            configuration: PingConfiguration(interval: .milliseconds(5), timeout: .seconds(1), count: .times(4)),
+            socket: socket)
+
+        var replies: [UInt16] = []
+        var failures: [UInt16] = []
+        for try await response in pinger.responses {
+            if case .reply(let reply) = response { replies.append(reply.sequence) }
+            if case .sendFailed(let sequence, _) = response { failures.append(sequence) }
+        }
+
+        #expect(failures == [0, 1])
+        #expect(replies == [2, 3])
+
+        let statistics = await pinger.statistics()
+        #expect(statistics.transmitted == 2)
+        #expect(statistics.received == 2)
+    }
+
+    @Test func allSendsFailingStillTerminates() async throws {
+        // Every send fails: .times(n) must still complete rather than hang,
+        // because each failed probe completes its slot.
+        let socket = MockPingSocket(sendErrorForIndex: { _ in .sendFailed(errno: 65) })
+        let pinger = makePinger(
+            configuration: PingConfiguration(interval: .milliseconds(5), timeout: .seconds(1), count: .times(3)),
+            socket: socket)
+
+        var events: [PingResponse] = []
+        for try await response in pinger.responses { events.append(response) }
+
+        #expect(events == [
+            .sendFailed(sequence: 0, errno: 65),
+            .sendFailed(sequence: 1, errno: 65),
+            .sendFailed(sequence: 2, errno: 65),
+        ])
+
+        let statistics = await pinger.statistics()
+        #expect(statistics.transmitted == 0)
+        #expect(statistics.received == 0)
+        #expect(socket.closed)
+    }
+
     @Test func repliesArriveInOrder() async throws {
         let socket = MockPingSocket(autoReply: { Fixtures.replyDatagram(forRequest: $0) })
         let pinger = makePinger(

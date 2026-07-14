@@ -24,7 +24,7 @@ Design rationale and roadmap live in [PLAN.md](PLAN.md).
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/gewill/PingKit.git", from: "0.5.0"),
+    .package(url: "https://github.com/gewill/PingKit.git", from: "0.6.0"),
 ],
 targets: [
     .target(name: "MyTarget", dependencies: [
@@ -68,6 +68,7 @@ let pinger = Pinger(host: "1.1.1.1", configuration: .init(
 for try await response in pinger.responses {
     switch response {
     case .sent(let seq):                print("seq=\(seq) sent")  // show a pending row here
+    case .sendFailed(let seq, let err): print("seq=\(seq) send failed (errno \(err))")
     case .reply(let r):                 print("seq=\(r.sequence) ttl=\(r.timeToLive ?? 0) rtt=\(r.roundTripTime)")
     case .timeout(let seq):             print("seq=\(seq) timed out")
     case .unreachable(let seq, let code): print("seq=\(seq) unreachable (code \(code))")
@@ -82,11 +83,14 @@ let stats = await pinger.statistics()
 print("\(stats.received)/\(stats.transmitted), loss \(stats.lossRate)")
 ```
 
-`.sent` fires as each echo request leaves the socket. While the run remains
-active, one terminal event follows for the same sequence, so a UI can insert
-a pending row per probe and update it in place (the demo app shows this
-pattern). On stop, cancellation, or stream failure, consumers should clear
-any remaining pending rows.
+Each sequence produces exactly one of two outcomes: a `.sent` followed by a
+terminal event (the socket accepted the probe), or a single `.sendFailed`
+with no `.sent` (the probe never left the socket — e.g. the network is
+briefly unreachable). A `.sendFailed` does **not** end the run: the next
+interval retries and recovers once the network does. So a UI can insert a
+pending row on `.sent` and update it in place, and render `.sendFailed` as a
+standalone failed row. On stop, cancellation, or stream failure, consumers
+should clear any remaining pending rows.
 
 Lifecycle rules:
 

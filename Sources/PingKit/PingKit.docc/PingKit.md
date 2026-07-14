@@ -21,6 +21,8 @@ for try await response in pinger.responses {
     switch response {
     case .sent(let seq):
         print("seq=\(seq) sent")
+    case .sendFailed(let seq, let err):
+        print("seq=\(seq) send failed, errno \(err)")
     case .reply(let r):
         print("seq=\(r.sequence) rtt=\(r.roundTripTime)")
     case .timeout(let seq):

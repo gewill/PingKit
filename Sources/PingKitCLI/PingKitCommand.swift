@@ -79,8 +79,10 @@ public struct Ping: AsyncParsableCommand {
         print("PING \(host): \(configuration.payloadSize) data bytes")
 
         var exitCode: Int32 = 0
+        var sawSendFailure = false
         do {
             for try await response in pinger.responses {
+                if case .sendFailed = response { sawSendFailure = true }
                 print(response)
             }
         } catch {
@@ -90,10 +92,24 @@ public struct Ping: AsyncParsableCommand {
 
         let statistics = await pinger.statistics()
         printStatistics(statistics, host: host)
-        if statistics.received == 0 && statistics.transmitted > 0 {
-            exitCode = 2
-        }
+        // Nothing came back: a failure, whether probes were sent and lost
+        // (transmitted > 0) or never left the socket at all (send failures).
+        exitCode = Self.resolvedExitCode(
+            current: exitCode,
+            statistics: statistics,
+            sawSendFailure: sawSendFailure)
         if exitCode != 0 { throw ExitCode(exitCode) }
+    }
+
+    static func resolvedExitCode(
+        current: Int32,
+        statistics: PingStatistics,
+        sawSendFailure: Bool
+    ) -> Int32 {
+        if statistics.received == 0 && (statistics.transmitted > 0 || sawSendFailure) {
+            return 2
+        }
+        return current
     }
 
     var addressFamily: PingConfiguration.AddressFamily {
@@ -186,6 +202,8 @@ private func print(_ response: PingResponse) {
     switch response {
     case .sent:
         break
+    case .sendFailed(let sequence, let number):
+        Swift.print("Send failed for icmp_seq \(sequence) (errno \(number))")
     case .reply(let reply):
         let ttl = reply.timeToLive.map(String.init) ?? "?"
         Swift.print(

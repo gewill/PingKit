@@ -1,4 +1,5 @@
 import ArgumentParser
+import PingKit
 import Testing
 @testable import PingKitCLI
 
@@ -59,5 +60,20 @@ import Testing
 
         let trace = try await PingKitCommand.asyncParseAsRoot(["trace", "example.com"])
         #expect(trace is Trace)
+    }
+
+    @Test func allSendFailuresExitWithStatusTwo() {
+        let statistics = PingStatistics(
+            transmitted: 0,
+            received: 0,
+            minRTT: nil,
+            averageRTT: nil,
+            maxRTT: nil,
+            stddevRTT: nil)
+
+        #expect(Ping.resolvedExitCode(
+            current: 0,
+            statistics: statistics,
+            sawSendFailure: true) == 2)
     }
 }

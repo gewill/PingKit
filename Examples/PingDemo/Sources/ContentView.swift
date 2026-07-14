@@ -135,6 +135,9 @@ struct ContentView: View {
             let line = Line(text: "seq=\(sequence) pinging …")
             pending[sequence] = line.id
             prepend(line)
+        case .sendFailed(let sequence, let errno):
+            // No .sent preceded this, so there's no pending row to update.
+            prepend(Line(text: "seq=\(sequence) send failed (errno \(errno))", isError: true))
         case .reply(let reply):
             let ttl = reply.timeToLive.map(String.init) ?? "?"
             // Show the source address so it's clear which family actually
