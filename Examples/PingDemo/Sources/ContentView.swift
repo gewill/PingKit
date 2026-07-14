@@ -12,6 +12,10 @@ struct ContentView: View {
 
     private var isRunning: Bool { pingTask != nil }
 
+    /// Dual-stack hosts (A + AAAA records) handy for exercising IPv6 and
+    /// NAT64 resolution.
+    private static let presetHosts = ["google.com", "bing.com", "taobao.com", "www.qq.com"]
+
     /// UI-facing mirror of `PingConfiguration.AddressFamily`, made
     /// `CaseIterable` so it can drive a `Picker`.
     private enum Family: String, CaseIterable, Identifiable {
@@ -56,6 +60,17 @@ struct ContentView: View {
                 .pickerStyle(.segmented)
                 .disabled(isRunning)
                 .padding(.horizontal)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Self.presetHosts, id: \.self) { preset in
+                            Button(preset) { host = preset }
+                                .buttonStyle(.bordered)
+                                .disabled(isRunning)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
 
                 List(lines) { line in
                     Text(line.text)

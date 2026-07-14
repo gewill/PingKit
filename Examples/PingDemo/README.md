@@ -16,7 +16,8 @@ Set your signing team, then run on a device.
 The **Auto / IPv4 / IPv6** picker maps to `PingConfiguration.AddressFamily`.
 Auto follows the system's DNS ordering (so hostnames resolve over DNS64/NAT64);
 each reply row shows the source address it came `from`, making the resolved
-family visible.
+family visible. The preset chips (`google.com`, `bing.com`, `taobao.com`,
+`www.qq.com`) are dual-stack hosts for quickly exercising both families.
 
 ## What to verify on a real device
 
