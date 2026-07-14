@@ -94,10 +94,22 @@ public struct Ping: AsyncParsableCommand {
         printStatistics(statistics, host: host)
         // Nothing came back: a failure, whether probes were sent and lost
         // (transmitted > 0) or never left the socket at all (send failures).
-        if statistics.received == 0 && (statistics.transmitted > 0 || sawSendFailure) {
-            exitCode = 2
-        }
+        exitCode = Self.resolvedExitCode(
+            current: exitCode,
+            statistics: statistics,
+            sawSendFailure: sawSendFailure)
         if exitCode != 0 { throw ExitCode(exitCode) }
+    }
+
+    static func resolvedExitCode(
+        current: Int32,
+        statistics: PingStatistics,
+        sawSendFailure: Bool
+    ) -> Int32 {
+        if statistics.received == 0 && (statistics.transmitted > 0 || sawSendFailure) {
+            return 2
+        }
+        return current
     }
 
     var addressFamily: PingConfiguration.AddressFamily {
