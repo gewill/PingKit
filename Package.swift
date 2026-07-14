@@ -9,7 +9,10 @@ let package = Package(
     ],
     products: [
         .library(name: "PingKit", targets: ["PingKit"]),
-        .executable(name: "pingkit", targets: ["PingKitCLI"]),
+        // Named pingkit-cli because a product named "pingkit" collides with
+        // the PingKit library target on case-insensitive file systems
+        // (Xcode derives per-target build directories from these names).
+        .executable(name: "pingkit-cli", targets: ["PingKitCLI"]),
     ],
     dependencies: [
         // Neither dependency is linked into the PingKit library target.

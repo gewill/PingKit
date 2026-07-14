@@ -27,6 +27,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build for iOS device target
         run: xcodebuild -scheme PingKit -destination 'generic/platform=iOS' build CODE_SIGNING_ALLOWED=NO
+      - name: Test on iOS Simulator
+        # PingKit-LibraryTests is a shared scheme (.swiftpm/xcode) holding
+        # only the library and its tests; the pingkit-cli executable target
+        # can't join an iOS test build graph.
+        run: |
+          DEVICE=$(xcrun simctl list devices available | sed -nE 's/^ *(iPhone [^(]+) \(.*$/\1/p' | head -1)
+          echo "Using simulator: $DEVICE"
+          xcodebuild -scheme PingKit-LibraryTests -destination "platform=iOS Simulator,name=$DEVICE" test
 
   linux:
     name: Linux (Swift ${{ matrix.swift }})

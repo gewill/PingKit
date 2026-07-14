@@ -136,10 +136,15 @@ the destination hop still resolves.
 ## CLI
 
 ```
-swift run pingkit 8.8.8.8 -4 -c 5 -i 1 -W 2 -s 56 -m 64
-swift run pingkit ::1 -6 -c 3
-swift run pingkit trace 8.8.8.8 -m 30 -q 3 -W 1
+swift run pingkit-cli 8.8.8.8 -4 -c 5 -i 1 -W 2 -s 56 -m 64
+swift run pingkit-cli ::1 -6 -c 3
+swift run pingkit-cli trace 8.8.8.8 -m 30 -q 3 -W 1
 ```
+
+The product is named `pingkit-cli` because a product named `pingkit` collides
+with the `PingKit` library on case-insensitive file systems; the command
+itself is `pingkit`, so install it as
+`cp .build/release/pingkit-cli /usr/local/bin/pingkit`.
 
 In ping mode `-4` / `-6` force the address family and `-m` sets the outgoing
 TTL or hop limit; in trace mode `-m` sets the maximum hop count.

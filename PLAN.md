@@ -143,7 +143,7 @@ Ping/
 ## 6.4 0.5.0 待发布能力
 
 - ✅ **IPv6 Ping**：完整内容见 M8；这是 `PingReply.from` 类型变化与 `PingResponse` 新增 ICMPv6 差错 case 的 breaking minor release。
-- ✅ **正式 CLI**：可执行产品更名为 `pingkit`，用 `swift-argument-parser` 提供 ping/trace 子命令、类型化校验、自动 help 与解析测试；依赖仅链接 CLI target。
+- ✅ **正式 CLI**：命令统一为 `pingkit`（产品名为 `pingkit-cli`——与 `PingKit` 库名在大小写不敏感文件系统上冲突，会破坏 xcodebuild 的 per-target 构建目录），用 `swift-argument-parser` 提供 ping/trace 子命令、类型化校验、自动 help 与解析测试；依赖仅链接 CLI target。iOS CI 通过共享 scheme `PingKit-LibraryTests` 只测库目标（executable target 无法进 iOS test graph）。
 
 ## 6.5 Backlog（有价值但不排期）
 
