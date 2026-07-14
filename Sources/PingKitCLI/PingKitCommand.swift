@@ -186,6 +186,8 @@ private func print(_ response: PingResponse) {
     switch response {
     case .sent:
         break
+    case .sendFailed(let sequence, let number):
+        Swift.print("Send failed for icmp_seq \(sequence) (errno \(number))")
     case .reply(let reply):
         let ttl = reply.timeToLive.map(String.init) ?? "?"
         Swift.print(

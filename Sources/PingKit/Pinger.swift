@@ -107,6 +107,8 @@ public actor Pinger {
             switch response {
             case .sent:
                 continue
+            case .sendFailed(_, let number):
+                throw PingError.sendFailed(errno: number)
             case .reply(let reply):
                 return reply
             case .timeout:
@@ -260,9 +262,17 @@ public actor Pinger {
         do {
             try socket.send(packet)
         } catch {
-            continuation.finish(throwing: error)
-            stopInternal()
-            return false
+            // A send failure is non-fatal: this probe never left the socket,
+            // so it gets no .sent and no pending entry, but the run keeps going
+            // and recovers once the network does. completeProbe() still runs so
+            // a bounded .times(n) run terminates instead of hanging on the
+            // sequence that never "completes".
+            let failureErrno: Int32
+            if case let PingError.sendFailed(number) = error { failureErrno = number }
+            else { failureErrno = 0 }
+            continuation.yield(.sendFailed(sequence: sequence, errno: failureErrno))
+            completeProbe()
+            return true
         }
         transmitted += 1
         continuation.yield(.sent(sequence: sequence))
