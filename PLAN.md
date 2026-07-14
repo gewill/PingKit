@@ -1,6 +1,6 @@
 # Swift Ping 库规划（PingKit）
 
-> 状态：M1–M8 已完成，当前版本 0.5.0；0.6.0 待发布（`.sendFailed` 非致命发送失败事件）。更新日期：2026-07-14
+> 状态：M1–M8 已完成，当前版本 0.6.0（`.sendFailed` 非致命发送失败事件）。更新日期：2026-07-14
 
 ## 1. 背景与现有生态
 
@@ -109,7 +109,7 @@ Ping/
      - Linux：ubuntu runner + Swift 6 工具链；先 `sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"` 打开免特权 ICMP，再 `swift test`。这样 Linux 从"best-effort 未编译验证"直接升级为 CI 持续验证。
      - Glibc 分支已在 CI 编译并测试，覆盖 `SOCK_DGRAM` 枚举和常量类型差异。
    - 顺手加 LICENSE（MIT）和 README badge。
-6. ✅ **M6 首次发布**（`0.1.0` 与 GitHub Release 已发布；DocC catalog 本地构建通过；`.spi.yml` 就绪。当前最新版本为 `0.5.0`。**遗留**：Swift Package Index 收录需要仓库先转 public 并到 swiftpackageindex.com/add-a-package 提交，由仓库所有者操作）
+6. ✅ **M6 首次发布**（`0.1.0` 与 GitHub Release 已发布；DocC catalog 本地构建通过；`.spi.yml` 就绪。当前最新版本为 `0.6.0`。**遗留**：Swift Package Index 收录需要仓库先转 public 并到 swiftpackageindex.com/add-a-package 提交，由仓库所有者操作）
 7. ✅ **M7 iOS 验证**
    - ✅ CI 加 iOS 门禁：`generic/platform=iOS` 设备目标编译 + iOS 模拟器全量测试（含 loopback 集成测试，证明 ICMP dgram socket 在 iOS 运行时可用）。
    - ✅ 最小 SwiftUI demo App（`Examples/PingDemo`，xcodegen 生成工程，含 `NSLocalNetworkUsageDescription`），模拟器构建通过。
@@ -145,7 +145,7 @@ Ping/
 - ✅ **IPv6 Ping**：完整内容见 M8；这是 `PingReply.from` 类型变化与 `PingResponse` 新增 ICMPv6 差错 case 的 breaking minor release。
 - ✅ **正式 CLI**：命令统一为 `pingkit`（产品名为 `pingkit-cli`——与 `PingKit` 库名在大小写不敏感文件系统上冲突，会破坏 xcodebuild 的 per-target 构建目录），用 `swift-argument-parser` 提供 ping/trace 子命令、类型化校验、自动 help 与解析测试；依赖仅链接 CLI target。iOS CI 通过共享 scheme `PingKit-LibraryTests` 只测库目标（executable target 无法进 iOS test graph）。
 
-## 6.5 0.6.0 待发布能力
+## 6.5 0.6.0 已发布能力
 
 - ✅ **`.sendFailed` 事件（breaking）**：`PingResponse` 新增 `case sendFailed(sequence:errno:)`。新不变量——每个序号二选一：(a) `.sent` + 一个终态事件（socket 收下了包），或 (b) 单独一个 `.sendFailed`（包根本没发出去，无 `.sent`）。发送失败从「致命，整个 run 抛错终止」改为「非致命」：不递增 `transmitted`、不建 pending 探针、不 yield `.sent`；yield `.sendFailed` 后调用 `completeProbe()`（关键：让 `.times(n)` 仍能终止，否则失败序号永不完成、流挂死）并让发送循环继续，网络恢复后自动恢复回包。一次性 `ping(_:)` 仍抛 `PingError.sendFailed`。统计口径：失败发送不计入 `transmitted`。实测 `pingkit-cli 8.8.8.8 -6`（IPv4 字面量强制 IPv6，errno 22）逐包报 send failed 且 run 不中止。消费方 `switch` 需新增 case。
 
