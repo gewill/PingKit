@@ -1,5 +1,12 @@
 # PingKit Agent Instructions
 
+## First Principle: Repository First
+
+All important information must land in the repository — Issues, Pull
+Requests, documentation, and code comments — rather than remain in an AI
+conversation. AI conversations are ephemeral; the repository history is the
+long-term memory. Every guideline below serves this principle.
+
 ## Project Overview
 
 `PingKit` is a dependency-free Swift package that implements dual-stack ICMP
