@@ -9,8 +9,9 @@ long-term memory. Every guideline below serves this principle.
 
 ## Project Overview
 
-`PingKit` is a dependency-free Swift package that implements dual-stack ICMP
-ping and IPv4 traceroute directly on unprivileged ICMP datagram sockets —
+`PingKit` is a Swift package whose library target is dependency-free,
+implementing dual-stack ICMP ping and IPv4 traceroute directly on
+unprivileged ICMP datagram sockets —
 there is no vendored C engine and no root requirement. The public surface is
 a Swift 6 `actor` + `AsyncSequence` API. Design rationale, platform pitfalls,
 and the milestone roadmap live in `PLAN.md`.
@@ -106,8 +107,11 @@ xcodebuild -scheme PingKit-LibraryTests -destination 'platform=iOS Simulator,nam
 
 Test-suite conventions (from `PLAN.md` §7):
 
-- Protocol-layer pure functions get direct unit tests with golden fixtures
-  captured from real packets (`Tests/PingKitTests/Fixtures.swift`).
+- Protocol-layer pure functions get direct unit tests against synthetic
+  wire-format packets built by `Tests/PingKitTests/Fixtures.swift`, which
+  mirror what the kernel delivers on an ICMP datagram socket (IPv4 header
+  included on Darwin). Golden fixtures captured from real packets (e.g. via
+  `tcpdump`) are planned in `PLAN.md` §7 but not yet present.
 - The socket layer is mocked through the internal `PingSocket` protocol to
   drive the state machine with injected replies, timeouts, and error
   messages.
