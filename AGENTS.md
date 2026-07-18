@@ -118,3 +118,99 @@ privileged container that enables `net.ipv4.ping_group_range` so the
 integration tests run there too. Keep changes green on all three platforms;
 Linux differences (identifier rewriting, no `SO_TIMESTAMP_MONOTONIC`) are
 expected and handled in the socket layer, not by skipping Linux.
+
+## AI Development Workflow
+
+The repository follows an AI-first development workflow with human review.
+
+### Core Principles
+
+- Optimize for traceability over attribution.
+- Every non-trivial change should be traceable from GitHub Issue → branch →
+  Pull Request → final commit.
+- Human review is always required before merge.
+- Keep the Git history clean while preserving decision history in GitHub.
+
+### Before Implementation
+
+Before making code changes:
+
+- Read the linked GitHub Issue.
+- Understand the problem and acceptance criteria.
+- Ask for clarification instead of making assumptions.
+- Keep implementation strictly within the Issue scope.
+- Establish the correct behavior first, following the order in
+  [Behavior Verification](#behavior-verification).
+
+### During Implementation
+
+- Avoid unrelated refactoring.
+- Prefer small, focused commits.
+- Update tests when behavior changes.
+- Update documentation if necessary.
+- Do not modify unrelated files.
+
+### Pull Requests
+
+Every Pull Request should contain:
+
+- Summary
+- Related Issue (`Closes #...` when appropriate)
+- Implementation notes
+- Validation performed
+- Human changes after AI generation (if any)
+
+If important architectural or design decisions were made, explain why, not
+only what changed.
+
+### Validation
+
+Before considering a task complete:
+
+- Build successfully.
+- Run relevant tests (see [Testing](#testing) for the commands and platform
+  matrix).
+- Verify manually when appropriate.
+- Check accessibility when UI changes (e.g. `Examples/PingDemo`).
+- Check localization when user-facing text changes.
+
+### Human Review
+
+The repository owner is responsible for all merged code. AI may generate
+implementations, tests, and documentation, but every change should be
+reviewed before merging. The reviewer should understand:
+
+- why the change exists
+- what changed
+- how it was validated
+
+### Git Workflow
+
+Preferred workflow:
+
+Issue → feature branch → Pull Request → review → squash merge
+
+- Branch names should reference the related Issue whenever possible.
+- Commits should remain concise and may reference the related Issue.
+- Avoid putting AI attribution in every commit message. Instead, record
+  important implementation context in the Pull Request.
+
+### Traceability
+
+Every implementation should be reproducible and reviewable. Important
+engineering decisions should be documented in Pull Requests rather than
+hidden in chat history. The goal is that a future maintainer can understand:
+
+- why this change exists
+- who reviewed it
+- how it was validated
+- which Issue introduced it
+
+without needing access to any AI conversation.
+
+### Philosophy
+
+Optimize for traceability, reviewability, and maintainability, rather than
+simply recording which AI tool generated the code. The final source of truth
+is the repository history (Issues, Pull Requests, Commits, and
+documentation), not the AI conversation.
