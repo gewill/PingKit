@@ -3,9 +3,11 @@
 ## First Principle: Repository First
 
 All important information must land in the repository — Issues, Pull
-Requests, documentation, and code comments — rather than remain in an AI
-conversation. AI conversations are ephemeral; the repository history is the
-long-term memory. Every guideline below serves this principle.
+Requests, commits, documentation, and code comments — rather than remain in
+an AI conversation. AI conversations, scratch plans, and execution context
+are ephemeral; the repository history is the long-term memory. A future
+maintainer should be able to understand the project's important context from
+the repository alone. Every guideline below serves this principle.
 
 ## Project Overview
 
@@ -141,12 +143,22 @@ The repository follows an AI-first development workflow with human review.
   Pull Request → final commit.
 - Human review is always required before merge.
 - Keep the Git history clean while preserving decision history in GitHub.
+- Record why a change is needed, what was decided, and how it was validated
+  — not a detailed log of every agent operation.
+- Keep the process lightweight; do not add documentation work for its own
+  sake.
+
+### Issues
+
+An Issue records why the change is needed, the expected result, and
+acceptance criteria when necessary. Simple tasks may stay short; no template
+is required.
 
 ### Before Implementation
 
 Before making code changes:
 
-- Read the linked GitHub Issue.
+- Read the linked GitHub Issue and relevant project documentation.
 - Understand the problem and acceptance criteria.
 - Ask for clarification instead of making assumptions.
 - Keep implementation strictly within the Issue scope.
@@ -160,19 +172,23 @@ Before making code changes:
 - Update tests when behavior changes.
 - Update documentation if necessary.
 - Do not modify unrelated files.
+- When an important design choice comes up, record the final decision and
+  its reason; do not log every attempt or the full AI reasoning.
 
 ### Pull Requests
 
-Every Pull Request should contain:
+Keep Pull Requests concise. Three sections are usually enough:
 
-- Summary
-- Related Issue (`Closes #...` when appropriate)
-- Implementation notes
-- Validation performed
-- Human changes after AI generation (if any)
+- **Summary** — what changed; reference the related Issue (`Closes #...`
+  when appropriate).
+- **Decision** — important decisions worth keeping long-term and why, not
+  only what changed; omit this section when there are none. Note human
+  changes made after AI generation when they matter for review.
+- **Validation** — build, test, or manual verification results, briefly.
 
-If important architectural or design decisions were made, explain why, not
-only what changed.
+Do not generate lengthy implementation reports, file inventories, or
+step-by-step execution logs, and do not restate what the code already makes
+clear.
 
 ### Validation
 
@@ -195,6 +211,10 @@ reviewed before merging. The reviewer should understand:
 - what changed
 - how it was validated
 
+Before merging, confirm the change matches the task goal, contains no
+obvious unrelated modifications, and was validated in proportion to its
+risk. Do not mechanically generate checklists for the sake of process.
+
 ### Git Workflow
 
 Preferred workflow:
@@ -202,9 +222,12 @@ Preferred workflow:
 Issue → feature branch → Pull Request → review → squash merge
 
 - Branch names should reference the related Issue whenever possible.
-- Commits should remain concise and may reference the related Issue.
-- Avoid putting AI attribution in every commit message. Instead, record
-  important implementation context in the Pull Request.
+- Commits should concisely describe the final change and may reference the
+  related Issue or Pull Request.
+- Keep AI tool or model names, agent execution modes, verification
+  checklists, and execution traces out of commit messages. Record important
+  context in the Issue, Pull Request, or project documentation instead.
+- Keep the process lightweight; do not add steps for the sake of form.
 
 ### Traceability
 
@@ -219,9 +242,28 @@ hidden in chat history. The goal is that a future maintainer can understand:
 
 without needing access to any AI conversation.
 
+### Decision Driven
+
+The code already explains how; documentation should capture what the code
+cannot express:
+
+- why the current approach was chosen
+- why alternatives were rejected
+- important constraints
+- compatibility or architecture trade-offs
+
+Record only decisions that matter for future maintenance — not obvious
+implementation details, and never a play-by-play of the development process.
+
 ### Philosophy
 
 Optimize for traceability, reviewability, and maintainability, rather than
 simply recording which AI tool generated the code. The final source of truth
 is the repository history (Issues, Pull Requests, Commits, and
 documentation), not the AI conversation.
+
+When executing a task, ensure — in this order — that the change is correct,
+the scope is focused, the validation is sufficient, and important decisions
+have landed in the repository. Within those constraints, minimize
+unnecessary process and prose. The repository history is the long-term
+memory; the AI conversation is only a temporary workspace.
