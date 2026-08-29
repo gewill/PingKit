@@ -285,13 +285,18 @@ integration tests run there too. Keep changes green on all three platforms;
 Linux differences (identifier rewriting, no `SO_TIMESTAMP_MONOTONIC`) are
 expected and handled in the socket layer, not by skipping Linux.
 
-Mocks skip the real wiring: `Pinger` and `Tracer` tests inject a socket
-through `socketFactory` and feed the state machine directly, so a change to
-how datagrams reach an actor can leave every test green while the shipped
-path is broken. When you change that wiring, exercise the real path too —
-`swift test` includes loopback integration tests on a capable machine, and
-`Examples/PingDemo` covers what only a device can show (local network
-permission, NAT64, backgrounding).
+Know what the mock does and does not cover. `MockPingSocket` implements
+`PingSocket` and delivers replies through the same `receiveHandler` the
+actor installed, so the socket-to-actor wiring is genuinely exercised. What
+it does not cover is everything inside `ICMPv4Socket` and `ICMPv6Socket` —
+syscalls, control-message parsing, kernel receive timestamps, IPv4 header
+handling, dispatch-source lifecycle — and the timing: the mock replies
+inline from `send`, while the real socket replies later from its own queue.
+Those gaps are closed only by the loopback integration tests, which skip
+when the environment lacks ICMP capability, and by `Examples/PingDemo` for
+what only a device shows (local network permission, NAT64, backgrounding).
+A change inside a concrete socket can therefore pass every test on a machine
+where the integration tests skipped.
 
 Before considering a task complete: it builds, the relevant tests run, the
 behavior is verified manually where a test cannot reach (device, IPv6-only
