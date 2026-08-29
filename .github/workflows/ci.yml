@@ -11,7 +11,7 @@ jobs:
     name: macOS
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Swift version
         run: swift --version
       - name: Build
@@ -25,7 +25,7 @@ jobs:
     name: iOS
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build for iOS device target
         run: xcodebuild -scheme PingKit -destination 'generic/platform=iOS' build CODE_SIGNING_ALLOWED=NO
       - name: Test on iOS Simulator
@@ -52,7 +52,7 @@ jobs:
         # testing the newer Linux toolchain used by contributors.
         swift: ["6.0", "6.1"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Enable unprivileged ICMP sockets
         run: sysctl -w net.ipv4.ping_group_range="0 2147483647" || echo "sysctl unavailable; integration tests will be skipped"
       - name: Swift version
