@@ -14,6 +14,7 @@ public struct IPv4Header: Sendable, Equatable {
 /// Namespace for the IPv4 header parsing entry points that produce an
 /// ``IPv4Header``.
 public enum IPv4 {
+    /// Smallest legal IPv4 header, in bytes — a header with no options.
     public static let minimumHeaderLength = 20
 
     /// Parses an IPv4 header at the start of `bytes`. Bounds-checked; throws
