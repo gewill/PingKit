@@ -6,7 +6,7 @@ Add the package, send one echo request, then consume a continuous run.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/gewill/PingKit.git", from: "0.6.1"),
+    .package(url: "https://github.com/gewill/PingKit.git", from: "0.6.2"),
 ],
 targets: [
     .target(name: "MyTarget", dependencies: ["PingKit"]),

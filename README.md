@@ -30,7 +30,7 @@ article: [Platform Notes](Sources/PingKit/PingKit.docc/PlatformNotes.md).
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/gewill/PingKit.git", from: "0.6.1"),
+    .package(url: "https://github.com/gewill/PingKit.git", from: "0.6.2"),
 ],
 targets: [
     .target(name: "MyTarget", dependencies: [

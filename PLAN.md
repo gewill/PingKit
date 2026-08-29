@@ -1,6 +1,6 @@
 # Swift Ping 库规划（PingKit）
 
-> 状态：M1–M8 已完成，当前版本 0.6.1（`.sendFailed` 非致命发送失败事件；失败发送计入丢包，对齐 ping(8)）。更新日期：2026-07-14
+> 状态：M1–M8 已完成，当前版本 0.6.2（文档完备 + Swift Package Index 提交；无 API 与行为变更）。更新日期：2026-08-29
 
 ## 1. 背景与现有生态
 
@@ -109,7 +109,7 @@ Ping/
      - Linux：ubuntu runner + Swift 6 工具链；先 `sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"` 打开免特权 ICMP，再 `swift test`。这样 Linux 从"best-effort 未编译验证"直接升级为 CI 持续验证。
      - Glibc 分支已在 CI 编译并测试，覆盖 `SOCK_DGRAM` 枚举和常量类型差异。
    - 顺手加 LICENSE（MIT）和 README badge。
-6. ✅ **M6 首次发布**（`0.1.0` 与 GitHub Release 已发布；DocC catalog 本地构建通过；`.spi.yml` 就绪。当前最新版本为 `0.6.1`。**遗留**：Swift Package Index 收录需要仓库先转 public 并到 swiftpackageindex.com/add-a-package 提交，由仓库所有者操作）
+6. ✅ **M6 首次发布**（`0.1.0` 与 GitHub Release 已发布；DocC catalog 本地构建通过；`.spi.yml` 就绪。当前最新版本为 `0.6.2`。仓库已转 public，SPI 提交为 SwiftPackageIndex/PackageList#15025 —— SPI 侧新包 ingestion 暂停中，请求排队等待处理）
 7. ✅ **M7 iOS 验证**
    - ✅ CI 加 iOS 门禁：`generic/platform=iOS` 设备目标编译 + iOS 模拟器全量测试（含 loopback 集成测试，证明 ICMP dgram socket 在 iOS 运行时可用）。
    - ✅ 最小 SwiftUI demo App（`Examples/PingDemo`，xcodegen 生成工程，含 `NSLocalNetworkUsageDescription`），模拟器构建通过。
@@ -153,7 +153,13 @@ Ping/
 
 - ✅ **失败发送计入丢包**：`Pinger` 现在把发送失败也计入 `transmitted`（不计 `received`），于是体现为 `lossRate` 丢包，与 `ping(8)` 一致。此前（0.6.0）不计入，导致断网期间的缺口从丢包率里消失（`statistics()` 显示 0% loss，误导只看聚合的消费方）。`.sendFailed` 事件仍单独保留，消费方要区分「没发出去」vs「发了没回」照样能做。依据：真机断网抓包中系统 `ping(8)` 对 IPv4 目标 `sendto: No route to host`（errno 65）期间仍把探测计入 transmitted，尾部 26 transmitted / 17 received / 34.6% loss。行为变更，无 API 破坏。实测 `pingkit-cli 8.8.8.8 -6 -c 3` → `3 transmitted, 0 received, 100% loss`，exit 2。
 
-## 6.7 Backlog（有价值但不排期）
+## 6.7 0.6.2 已发布能力
+
+- ✅ **文档完备**：DocC catalog 从单一 landing page 扩为 landing page + Getting Started + Platform Notes 两篇 article；README 里的平台行为（iOS 本地网络权限、NAT64、后台挂起、Linux `ping_group_range` 与 identifier 重写）进入生成文档。公开符号摘要覆盖率（按生成归档统计）75% → 88%，类型级 100%。**无 API 与行为变更** —— `Sources` 下 `.swift` 的改动全部是 `///` 注释。
+- ✅ **进入 Swift Package Index 流程**：仓库转 public，提交为 SwiftPackageIndex/PackageList#15025；README 增加 Swift 版本、平台、Release badge（SPI 构建完成前显示 pending，之后自动填充）。
+- 🔧 **测试竞态修复**：`duplicateReplyCountedOnce` 原先靠 1ms 轮询任务抢 50ms 探针超时，在 CI 的 iOS 模拟器上偶发失败；改为经 `MockPingSocket.repliesForIndex` 在 `send` 内联投递重复回包，断言不变（#20）。仅测试改动。
+
+## 6.8 Backlog（有价值但不排期）
 
 - **Linux Traceroute 完整中间跳**：读取 ICMP socket error queue（`MSG_ERRQUEUE`）。
 - **IPv6 Traceroute**：在 IPv4 traceroute 的 Linux error queue 缺口解决后，再统一设计双栈 traceroute 地址与错误语义。

@@ -163,9 +163,11 @@ values remain subtractable.
 - `PLAN.md` is the design document of record. When shipping a feature or
   changing direction, update its milestone sections rather than letting the
   plan drift from the code.
-- README and `PLAN.md` reference the current release version (e.g. the
-  installation snippet's `from: "…"`); bump them together when tagging a
-  release.
+- Three files pin the current release version: the installation snippets in
+  `README.md` and `Sources/PingKit/PingKit.docc/GettingStarted.md` (both
+  `from: "…"`), and `PLAN.md`'s status line and milestone list. Bump all
+  three when tagging a release — `grep -rn 'from: "' README.md Sources/`
+  finds the snippets.
 - Source distribution carries no third-party license obligation: the
   `PingKit` library links nothing, and a consumer resolving
   `swift-argument-parser` receives it under that package's own Apache 2.0
