@@ -4,6 +4,14 @@ import Darwin
 import Glibc
 #endif
 
+/// Errors thrown by a ping or traceroute run.
+///
+/// Setup failures — configuration, resolution, socket creation and options,
+/// and a rejected second consumer — surface here for every run. Per-probe
+/// network outcomes do not: a continuous run reports those as
+/// ``PingResponse`` events, and only the one-shot
+/// ``Pinger/ping(_:timeout:payloadSize:addressFamily:)`` converts them into
+/// the matching case below.
 public enum PingError: Error, Sendable, Equatable {
     case invalidConfiguration
     /// DNS resolution failed; `code` is the `getaddrinfo` error code.

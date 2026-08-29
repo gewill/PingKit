@@ -309,6 +309,11 @@ public struct TracerouteHops: AsyncSequence, Sendable {
         Iterator(tracer: tracer)
     }
 
+    /// Iterator for ``TracerouteHops``.
+    ///
+    /// The trace starts on the first `next()`: that is where resolution and
+    /// socket setup happen, where their errors surface, and where a second
+    /// consumer is rejected with ``PingError/sequenceAlreadyConsumed``.
     public struct Iterator: AsyncIteratorProtocol {
         private let tracer: Tracer
         private var streamIterator: AsyncThrowingStream<TracerouteHop, any Error>.Iterator?
