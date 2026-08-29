@@ -166,6 +166,15 @@ values remain subtractable.
 - README and `PLAN.md` reference the current release version (e.g. the
   installation snippet's `from: "…"`); bump them together when tagging a
   release.
+- Source distribution carries no third-party license obligation: the
+  `PingKit` library links nothing, and a consumer resolving
+  `swift-argument-parser` receives it under that package's own Apache 2.0
+  terms. Shipping a **built** `pingkit-cli` is different — a Release asset,
+  a Homebrew bottle, anything a user runs without building it. Apache 2.0
+  requires a copy of the license to travel with that binary, plus any
+  `NOTICE` file the dependency ships; 1.8.2 ships none, so re-check after a
+  version bump. Attach them to the same artifact, or do not attach the
+  binary.
 - Product and scheme names are load-bearing: the executable is
   `pingkit-cli` (not `pingkit`) to avoid a case-insensitive collision with
   the library target, and `PingKit-LibraryTests` is the shared scheme that

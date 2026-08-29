@@ -6,7 +6,7 @@
 
 | 方案 | 状态 | 结论 |
 |---|---|---|
-| Apple **SimplePing**（官方示例） | Objective-C，最后更新 2016（v1.4 加入 IPv6），已归档 | 不是库，但是"免特权 ICMP socket"做法的权威参考实现，协议细节（校验和、IPv4 收包带 IP 头等）值得照抄 |
+| Apple **SimplePing**（官方示例） | Objective-C，最后更新 2016（v1.4 加入 IPv6），已归档 | 不是库，但是"免特权 ICMP socket"做法的权威参考实现。本项目据此选型，并参考其记录的平台事实（IPv4 收包带 IP 头等）；协议实现独立编写 —— 校验和按 RFC 1071 自行实现，事件层用 DispatchSourceRead 而非其 CFSocket —— 未复制其代码 |
 | **SwiftyPing**（samiyr） | MIT，单文件 Swift 5，最后发版 v1.2.1（2021） | 社区最流行，但基本停更；回调式 API、无 async/await、无 Swift 6 并发安全、作者自述"unsafe cast 可能不优雅地失败" |
 | **SwiftPing**（ankitthakur）等 | 更老，弃维护 | 不考虑 |
 | **swift-nio** `NIORawSocketBootstrap` | 活跃 | 走 SOCK_RAW，需要 root/CAP_NET_RAW，不适合 iOS/沙盒 App；依赖也重 |
@@ -175,6 +175,7 @@ Ping/
 - `getaddrinfo` 本身是阻塞调用，需要受控线程池与取消后的结果丢弃机制。
 - App Store 审核对 ICMP 无限制先例（SwiftyPing 用户众多），风险低。
 - NAT64 只保证域名通过 DNS64 获得合成 AAAA；IPv4 字面量无法在 IPv6-only 网络直接使用，调用方应展示可理解的解析/网络错误。
+- 分发**编译好的** `pingkit-cli` 二进制时须随附 swift-argument-parser 的 Apache 2.0 许可证（源码分发无此义务）；具体规则见 AGENTS.md 的 Change Boundaries。
 
 ## 参考
 
