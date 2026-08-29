@@ -458,6 +458,11 @@ public struct PingResponses: AsyncSequence, Sendable {
         Iterator(pinger: pinger)
     }
 
+    /// Iterator for ``PingResponses``.
+    ///
+    /// The run starts on the first `next()`: that is where resolution and
+    /// socket setup happen, where their errors surface, and where a second
+    /// consumer is rejected with ``PingError/sequenceAlreadyConsumed``.
     public struct Iterator: AsyncIteratorProtocol {
         private let pinger: Pinger
         private var streamIterator: AsyncThrowingStream<PingResponse, any Error>.Iterator?

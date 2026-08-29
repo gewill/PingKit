@@ -11,6 +11,8 @@ public struct IPv4Header: Sendable, Equatable {
     public let destination: IPv4Endpoint
 }
 
+/// Namespace for the IPv4 header parsing entry points that produce an
+/// ``IPv4Header``.
 public enum IPv4 {
     public static let minimumHeaderLength = 20
 

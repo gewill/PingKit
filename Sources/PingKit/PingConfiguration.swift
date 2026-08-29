@@ -1,5 +1,6 @@
 /// Options controlling a `Pinger` run.
 public struct PingConfiguration: Sendable {
+    /// Which IP family a run resolves the host to and sends over.
     public enum AddressFamily: Sendable, Equatable {
         /// Follow `getaddrinfo` ordering, including DNS64/NAT64 results.
         case automatic
@@ -7,6 +8,7 @@ public struct PingConfiguration: Sendable {
         case ipv6
     }
 
+    /// How many probes a run sends before its sequence finishes.
     public enum Count: Sendable, Equatable {
         case unlimited
         case times(Int)

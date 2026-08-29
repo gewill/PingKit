@@ -60,6 +60,8 @@ public enum TracerouteProbe: Sendable, Equatable {
     /// Nothing answered within the timeout (printed as `*` by traceroute).
     case timeout
 
+    /// What answered a probe, which also decides whether the trace
+    /// continues past this hop.
     public enum Kind: Sendable, Equatable {
         /// ICMP Time Exceeded from an intermediate router.
         case hop
