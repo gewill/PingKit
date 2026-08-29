@@ -32,6 +32,12 @@ public enum PingResponse: Sendable, Equatable {
 /// A successful echo reply.
 public struct PingReply: Sendable, Equatable {
     public let sequence: UInt16
+    /// Elapsed time from just before the send call to the packet's arrival.
+    ///
+    /// Measured on a monotonic clock against the kernel's arrival timestamp
+    /// where the platform supplies one (`SO_TIMESTAMP_MONOTONIC`), so
+    /// scheduler wakeup latency does not inflate it; the receive path's own
+    /// timestamp is the fallback. Never wall-clock time.
     public let roundTripTime: Duration
     /// IPv4 TTL or IPv6 hop limit; `nil` when it isn't available.
     public let timeToLive: UInt8?
