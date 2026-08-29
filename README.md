@@ -1,6 +1,9 @@
 # PingKit
 
+[![Swift](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fgewill%2FPingKit%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/gewill/PingKit)
+[![Platforms](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fgewill%2FPingKit%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/gewill/PingKit)
 [![CI](https://github.com/gewill/PingKit/actions/workflows/ci.yml/badge.svg)](https://github.com/gewill/PingKit/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/gewill/PingKit?sort=semver)](https://github.com/gewill/PingKit/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Modern dual-stack ICMP ping library for Swift — IPv4 and IPv6 echo over
