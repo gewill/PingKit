@@ -227,11 +227,12 @@ what the correct behavior is — in this order:
 2. **OS socket semantics second.** PingKit sits directly on the kernel's
    unprivileged ICMP datagram sockets, so the mechanism layer is the
    platform, not project source. Confirm behavior against man pages, a small
-   probe program, or kernel source (xnu, Linux `net/ipv4/ping.c`) — for
-   example, macOS delivers the full IP header on IPv4 `SOCK_DGRAM` receives
-   while ICMPv6 receives carry only the ICMPv6 message, and Linux ping
-   sockets rewrite the echo identifier to the socket's bound port, so reply
-   matching cannot assume the sent identifier comes back.
+   probe program, or kernel source (xnu, Linux `net/ipv4/ping.c`) rather
+   than reasoning from the Swift API alone. For example, macOS delivers the
+   full IP header on IPv4 `SOCK_DGRAM` receives while ICMPv6 receives carry
+   only the ICMPv6 message; Linux ping sockets rewrite the echo identifier
+   to the socket's bound port, so reply matching cannot assume the sent
+   identifier comes back.
 3. **RFC third.** When a wire format or protocol behavior has a formal
    definition, check the RFC and reflect that definition in documentation and
    tests: RFC 792 (ICMPv4), RFC 4443 (ICMPv6), RFC 1071 (internet checksum),
@@ -284,13 +285,18 @@ integration tests run there too. Keep changes green on all three platforms;
 Linux differences (identifier rewriting, no `SO_TIMESTAMP_MONOTONIC`) are
 expected and handled in the socket layer, not by skipping Linux.
 
-Mocks skip the real wiring: `Pinger` and `Tracer` tests inject a socket
-through `socketFactory` and feed the state machine directly, so a change to
-how datagrams reach an actor can leave every test green while the shipped
-path is broken. When you change that wiring, exercise the real path too —
-`swift test` includes loopback integration tests on a capable machine, and
-`Examples/PingDemo` covers what only a device can show (local network
-permission, NAT64, backgrounding).
+Know what the mock does and does not cover. `MockPingSocket` implements
+`PingSocket` and delivers replies through the same `receiveHandler` the
+actor installed, so the socket-to-actor wiring is genuinely exercised. What
+it does not cover is everything inside `ICMPv4Socket` and `ICMPv6Socket` —
+syscalls, control-message parsing, kernel receive timestamps, IPv4 header
+handling, dispatch-source lifecycle — and the timing: the mock replies
+inline from `send`, while the real socket replies later from its own queue.
+Those gaps are closed only by the loopback integration tests, which skip
+when the environment lacks ICMP capability, and by `Examples/PingDemo` for
+what only a device shows (local network permission, NAT64, backgrounding).
+A change inside a concrete socket can therefore pass every test on a machine
+where the integration tests skipped.
 
 Before considering a task complete: it builds, the relevant tests run, the
 behavior is verified manually where a test cannot reach (device, IPv6-only
