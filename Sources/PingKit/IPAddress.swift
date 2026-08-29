@@ -22,6 +22,9 @@ public struct IPv6Endpoint: Hashable, Sendable, CustomStringConvertible {
     public let bytes: [UInt8]
     public let scopeID: UInt32
 
+    /// Creates an endpoint from a raw 16-byte address.
+    ///
+    /// Returns `nil` when `bytes` is not exactly 16 bytes long.
     public init?(bytes: [UInt8], scopeID: UInt32 = 0) {
         guard bytes.count == 16 else { return nil }
         self.bytes = bytes
