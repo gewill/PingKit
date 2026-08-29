@@ -48,6 +48,7 @@ socket deterministically.
 
 ### Essentials
 
+- <doc:GettingStarted>
 - ``Pinger``
 - ``PingConfiguration``
 - ``PingResponses``
