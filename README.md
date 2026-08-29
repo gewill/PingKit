@@ -11,7 +11,10 @@ On Apple platforms, RTTs are measured against the kernel's packet-arrival
 timestamps (`SO_TIMESTAMP_MONOTONIC`), so scheduler wakeup latency doesn't
 inflate them.
 
-Design rationale and roadmap live in [PLAN.md](PLAN.md).
+Design rationale and roadmap live in [PLAN.md](PLAN.md). The platform
+behavior below — address families and NAT64, iOS permissions and
+backgrounding, Linux kernel settings — is also written up as a DocC
+article: [Platform Notes](Sources/PingKit/PingKit.docc/PlatformNotes.md).
 
 ## Requirements
 
