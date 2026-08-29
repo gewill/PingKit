@@ -1,5 +1,7 @@
 /// ICMPv6 echo encoding and message parsing as defined by RFC 4443.
 public enum ICMPv6 {
+    /// Size of the ICMPv6 header (type, code, checksum, identifier,
+    /// sequence).
     public static let headerSize = 8
 
     static let destinationUnreachableType: UInt8 = 1
@@ -79,11 +81,27 @@ public enum ICMPv6 {
 
 /// A decoded ICMPv6 message relevant to ping.
 public enum ICMPv6Message: Sendable, Equatable {
+    /// Type 129. `identifier` and `sequence` are the big-endian 16-bit
+    /// fields at byte offsets 4 and 6; `payloadCount` counts the bytes after
+    /// the 8-byte header.
     case echoReply(identifier: UInt16, sequence: UInt16, payloadCount: Int)
+    /// Type 128. A ping client sends these rather than consuming them —
+    /// pinging `::1` can deliver its own request back, and `Pinger` ignores
+    /// it.
     case echoRequest(identifier: UInt16, sequence: UInt16)
+    /// Type 1. `code` is the header's code byte, numbered by RFC 4443 —
+    /// not interchangeable with the ICMPv4 codes. `probe` is the identifier
+    /// and sequence recovered from the packet this error quotes, or `nil`
+    /// when that quote is not one of our echo requests.
     case destinationUnreachable(code: UInt8, probe: EmbeddedProbe?)
+    /// Type 2. `mtu` is the big-endian 32-bit word at offset 4 — the next
+    /// hop's MTU, as reported by path MTU discovery.
     case packetTooBig(mtu: UInt32, probe: EmbeddedProbe?)
+    /// Type 3, the message a traceroute reads from intermediate routers.
     case timeExceeded(code: UInt8, probe: EmbeddedProbe?)
+    /// Type 4. `pointer` is the big-endian 32-bit word at offset 4: the
+    /// byte offset within the quoted packet that the sender objected to.
     case parameterProblem(code: UInt8, pointer: UInt32, probe: EmbeddedProbe?)
+    /// Any other ICMPv6 type, kept verbatim. `Pinger` ignores these.
     case other(type: UInt8, code: UInt8)
 }

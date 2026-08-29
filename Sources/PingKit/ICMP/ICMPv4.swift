@@ -111,10 +111,24 @@ public enum ICMPv4 {
 
 /// A decoded ICMPv4 message, restricted to the kinds a ping client cares about.
 public enum ICMPv4Message: Sendable, Equatable {
+    /// Type 0. `identifier` and `sequence` are the big-endian 16-bit fields
+    /// at byte offsets 4 and 6; `payloadCount` counts the bytes after the
+    /// 8-byte header.
     case echoReply(identifier: UInt16, sequence: UInt16, payloadCount: Int)
+    /// Type 8. A ping client sends these rather than consuming them —
+    /// pinging localhost can deliver its own request back, and `Pinger`
+    /// ignores it.
     case echoRequest(identifier: UInt16, sequence: UInt16)
+    /// Type 3. `code` is the header's code byte, numbered by RFC 792 —
+    /// ICMPv6 numbers its own differently. `probe` is the identifier and
+    /// sequence recovered from the datagram this error quotes, or `nil`
+    /// when that quote is not one of our echo requests.
     case destinationUnreachable(code: UInt8, probe: EmbeddedProbe?)
+    /// Type 11, the message traceroute reads from intermediate routers.
+    /// `code` and `probe` follow the same rules as
+    /// ``destinationUnreachable(code:probe:)``.
     case timeExceeded(code: UInt8, probe: EmbeddedProbe?)
+    /// Any other ICMPv4 type, kept verbatim. `Pinger` ignores these.
     case other(type: UInt8, code: UInt8)
 }
 
@@ -131,8 +145,18 @@ public struct EmbeddedProbe: Sendable, Equatable {
 
 /// Reasons a raw packet failed to parse.
 public enum PacketParseError: Error, Sendable, Equatable {
+    /// Fewer bytes than the structure requires: under 8 for an ICMP
+    /// message, or under 20 — or under its own declared header length —
+    /// for an IPv4 header.
     case truncated
+    /// The IPv4 header's version nibble was not 4; the payload is the
+    /// version actually seen.
     case invalidIPVersion(UInt8)
+    /// The IPv4 header declared an IHL below the 20-byte minimum; the
+    /// payload is the computed length in bytes (IHL x 4).
     case invalidHeaderLength(Int)
+    /// An echo message's RFC 1071 checksum did not validate. Only echo
+    /// messages are checked — see the note on
+    /// ``ICMPv4/parseMessage(_:verifyChecksum:)``.
     case checksumMismatch
 }
