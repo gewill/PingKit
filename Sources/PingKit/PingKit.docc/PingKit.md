@@ -49,6 +49,7 @@ socket deterministically.
 ### Essentials
 
 - <doc:GettingStarted>
+- <doc:PlatformNotes>
 - ``Pinger``
 - ``PingConfiguration``
 - ``PingResponses``
