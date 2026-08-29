@@ -104,6 +104,12 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
     /// or fail-then-recover. A failed send records no datagram, mirroring the
     /// real socket where nothing reached the wire.
     private let sendErrorForIndex: (@Sendable (Int) -> PingError?)?
+    /// Given the zero-based send index (== probe sequence) and the datagram
+    /// just sent, returns every reply to deliver for it — none, one, or the
+    /// same reply twice. Delivery happens inline from `send`, so a test that
+    /// needs a duplicate does not have to race a polling task against the
+    /// probe timeout. Takes precedence over the single-reply strategies.
+    private let repliesForIndex: (@Sendable (Int, [UInt8]) -> [[UInt8]])?
     private var sendAttempts = 0
 
     init(
@@ -111,13 +117,15 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
         autoDatagram: (@Sendable ([UInt8]) -> SocketDatagram?)? = nil,
         routeReply: (@Sendable ([UInt8], Int) -> [UInt8]?)? = nil,
         setTimeToLiveError: PingError? = nil,
-        sendErrorForIndex: (@Sendable (Int) -> PingError?)? = nil
+        sendErrorForIndex: (@Sendable (Int) -> PingError?)? = nil,
+        repliesForIndex: (@Sendable (Int, [UInt8]) -> [[UInt8]])? = nil
     ) {
         self.autoReply = autoReply
         self.autoDatagram = autoDatagram
         self.routeReply = routeReply
         self.setTimeToLiveError = setTimeToLiveError
         self.sendErrorForIndex = sendErrorForIndex
+        self.repliesForIndex = repliesForIndex
     }
 
     var sent: [[UInt8]] {
@@ -138,10 +146,10 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
     }
 
     func send(_ datagram: [UInt8]) throws {
-        let sendError = lock.withLock { () -> PingError? in
+        let (index, sendError) = lock.withLock { () -> (Int, PingError?) in
             let index = sendAttempts
             sendAttempts += 1
-            return sendErrorForIndex?(index)
+            return (index, sendErrorForIndex?(index))
         }
         if let sendError { throw sendError }
         let (currentHandler, ttl) = lock.withLock {
@@ -149,7 +157,11 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
             appliedTTLs.append(currentTTL)
             return (handler, currentTTL)
         }
-        if let autoDatagram, let datagram = autoDatagram(datagram) {
+        if let repliesForIndex {
+            for reply in repliesForIndex(index, datagram) {
+                currentHandler?(SocketDatagram(bytes: reply, receivedAt: MonotonicTimestamp.now()))
+            }
+        } else if let autoDatagram, let datagram = autoDatagram(datagram) {
             currentHandler?(datagram)
         } else if let routeReply {
             if let reply = routeReply(datagram, ttl) {

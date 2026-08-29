@@ -300,19 +300,17 @@ import Testing
     }
 
     @Test func duplicateReplyCountedOnce() async throws {
-        let socket = MockPingSocket()
+        // Both copies are delivered from inside `send`, so the duplicate
+        // cannot lose a race against the probe timeout. An earlier version
+        // polled `socket.sent` from a task and flaked on loaded CI (#20).
+        let socket = MockPingSocket(repliesForIndex: { index, request in
+            guard index == 0 else { return [] }
+            let reply = Fixtures.replyDatagram(forRequest: request)
+            return [reply, reply]
+        })
         let pinger = makePinger(
             configuration: PingConfiguration(interval: .milliseconds(5), timeout: .milliseconds(50), count: .times(2)),
             socket: socket)
-
-        let injector = Task {
-            while socket.sent.isEmpty {
-                try await Task.sleep(for: .milliseconds(1))
-            }
-            let reply = Fixtures.replyDatagram(forRequest: socket.sent[0])
-            socket.inject(reply)
-            socket.inject(reply)
-        }
 
         var replies = 0
         var timeouts = 0
@@ -320,7 +318,6 @@ import Testing
             if case .reply = response { replies += 1 }
             if case .timeout = response { timeouts += 1 }
         }
-        _ = try? await injector.value
 
         #expect(replies == 1)
         #expect(timeouts == 1)
