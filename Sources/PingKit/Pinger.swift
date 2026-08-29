@@ -58,6 +58,12 @@ public actor Pinger {
         let timeoutTask: Task<Void, Never>
     }
 
+    /// Creates a pinger for `host` — a hostname, an IPv4 literal, or an
+    /// IPv6 literal including a scoped link-local address.
+    ///
+    /// Creating one starts nothing. Resolution and socket setup happen on
+    /// the first iteration of ``responses``, which is where their errors
+    /// surface.
     public init(host: String, configuration: PingConfiguration = PingConfiguration()) {
         self.init(
             host: host,

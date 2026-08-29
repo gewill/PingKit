@@ -13,7 +13,12 @@ public enum PingResponse: Sendable, Equatable {
     /// recovers on the next interval); `errno` is the underlying `send`
     /// error, or 0 if unavailable.
     case sendFailed(sequence: UInt16, errno: Int32)
+    /// An echo reply matched this probe — the only outcome that counts
+    /// toward ``PingStatistics/received``.
     case reply(PingReply)
+    /// Nothing answered this probe within ``PingConfiguration/timeout``.
+    /// The probe stays counted in ``PingStatistics/transmitted``, so it
+    /// shows up as loss.
     case timeout(sequence: UInt16)
     /// The network returned Destination Unreachable (ICMPv4 type 3 or
     /// ICMPv6 type 1) for this probe. The two families number their codes

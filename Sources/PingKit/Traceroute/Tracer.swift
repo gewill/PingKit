@@ -55,6 +55,12 @@ public actor Tracer {
         case aborted
     }
 
+    /// Creates a tracer for `host` — a hostname or an IPv4 literal, since
+    /// tracing is IPv4-only.
+    ///
+    /// Creating one starts nothing. Resolution and socket setup happen on
+    /// the first iteration of ``hops``, which is where their errors
+    /// surface.
     public init(host: String, configuration: TracerouteConfiguration = TracerouteConfiguration()) {
         self.init(
             host: host,
