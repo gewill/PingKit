@@ -227,11 +227,12 @@ what the correct behavior is — in this order:
 2. **OS socket semantics second.** PingKit sits directly on the kernel's
    unprivileged ICMP datagram sockets, so the mechanism layer is the
    platform, not project source. Confirm behavior against man pages, a small
-   probe program, or kernel source (xnu, Linux `net/ipv4/ping.c`) — for
-   example, macOS delivers the full IP header on IPv4 `SOCK_DGRAM` receives
-   while ICMPv6 receives carry only the ICMPv6 message, and Linux ping
-   sockets rewrite the echo identifier to the socket's bound port, so reply
-   matching cannot assume the sent identifier comes back.
+   probe program, or kernel source (xnu, Linux `net/ipv4/ping.c`) rather
+   than reasoning from the Swift API alone. For example, macOS delivers the
+   full IP header on IPv4 `SOCK_DGRAM` receives while ICMPv6 receives carry
+   only the ICMPv6 message; Linux ping sockets rewrite the echo identifier
+   to the socket's bound port, so reply matching cannot assume the sent
+   identifier comes back.
 3. **RFC third.** When a wire format or protocol behavior has a formal
    definition, check the RFC and reflect that definition in documentation and
    tests: RFC 792 (ICMPv4), RFC 4443 (ICMPv6), RFC 1071 (internet checksum),
