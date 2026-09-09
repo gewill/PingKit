@@ -110,6 +110,7 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
     /// needs a duplicate does not have to race a polling task against the
     /// probe timeout. Takes precedence over the single-reply strategies.
     private let repliesForIndex: (@Sendable (Int, [UInt8]) -> [[UInt8]])?
+    private let datagramsForIndex: (@Sendable (Int, [UInt8]) -> [SocketDatagram])?
     private var sendAttempts = 0
 
     init(
@@ -118,7 +119,8 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
         routeReply: (@Sendable ([UInt8], Int) -> [UInt8]?)? = nil,
         setTimeToLiveError: PingError? = nil,
         sendErrorForIndex: (@Sendable (Int) -> PingError?)? = nil,
-        repliesForIndex: (@Sendable (Int, [UInt8]) -> [[UInt8]])? = nil
+        repliesForIndex: (@Sendable (Int, [UInt8]) -> [[UInt8]])? = nil,
+        datagramsForIndex: (@Sendable (Int, [UInt8]) -> [SocketDatagram])? = nil
     ) {
         self.autoReply = autoReply
         self.autoDatagram = autoDatagram
@@ -126,6 +128,7 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
         self.setTimeToLiveError = setTimeToLiveError
         self.sendErrorForIndex = sendErrorForIndex
         self.repliesForIndex = repliesForIndex
+        self.datagramsForIndex = datagramsForIndex
     }
 
     var sent: [[UInt8]] {
@@ -157,7 +160,9 @@ final class MockPingSocket: PingSocket, @unchecked Sendable {
             appliedTTLs.append(currentTTL)
             return (handler, currentTTL)
         }
-        if let repliesForIndex {
+        if let datagramsForIndex {
+            for reply in datagramsForIndex(index, datagram) { currentHandler?(reply) }
+        } else if let repliesForIndex {
             for reply in repliesForIndex(index, datagram) {
                 currentHandler?(SocketDatagram(bytes: reply, receivedAt: MonotonicTimestamp.now()))
             }

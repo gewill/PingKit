@@ -117,6 +117,7 @@ import Testing
             var ipv6Header = [UInt8](repeating: 0, count: 40)
             ipv6Header[0] = 0x60
             ipv6Header[6] = 58
+            ipv6Header[39] = 1 // quoted destination ::1
             return SocketDatagram(
                 bytes: [2, 0, 0, 0, 0, 0, 5, 0] + ipv6Header + request,
                 receivedAt: MonotonicTimestamp.now(),

@@ -17,6 +17,26 @@ public enum IPAddress: Hashable, Sendable, CustomStringConvertible {
     }
 }
 
+extension IPAddress {
+    /// Group destinations can be answered by individual members. For a
+    /// unicast destination, require its address (and link-local scope).
+    func matchesEchoSource(_ source: IPAddress?) -> Bool {
+        switch (self, source) {
+        case (.ipv4(let target), .ipv4(let source)):
+            let first = target.octets.0
+            if (224...239).contains(first) || target.rawAddress == .max { return true }
+            return target == source
+        case (.ipv6(let target), .ipv6(let source)):
+            if target.bytes[0] == 0xff { return true }
+            guard target.bytes == source.bytes else { return false }
+            let linkLocal = target.bytes[0] == 0xfe && target.bytes[1] & 0xc0 == 0x80
+            return !linkLocal || target.scopeID == source.scopeID
+        default:
+            return false
+        }
+    }
+}
+
 /// An IPv6 address and optional interface scope identifier.
 public struct IPv6Endpoint: Hashable, Sendable, CustomStringConvertible {
     public let bytes: [UInt8]

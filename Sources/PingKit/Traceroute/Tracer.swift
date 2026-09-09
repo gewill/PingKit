@@ -147,7 +147,7 @@ public actor Tracer {
             receiveTask = Task { [weak self] in
                 for await datagram in datagrams {
                     guard let self else { return }
-                    await self.handleDatagram(datagram.bytes, receivedAt: datagram.receivedAt)
+                    await self.handleDatagram(datagram)
                 }
             }
         } catch {
@@ -232,13 +232,16 @@ public actor Tracer {
         awaiting.continuation.resume(returning: .timedOut)
     }
 
-    private func handleDatagram(_ datagram: [UInt8], receivedAt: MonotonicTimestamp) {
-        guard case .running = state, let awaiting else { return }
-        guard let packet = ReceivedPacket.parse(datagram) else { return }
+    private func handleDatagram(_ datagram: SocketDatagram) {
+        guard case .running = state, let awaiting, let endpoint else { return }
+        guard let packet = ReceivedPacket.parse(datagram.bytes, expectedDestination: endpoint) else { return }
+        let receivedAt = datagram.receivedAt
+        let source = packet.source.map(IPAddress.ipv4) ?? datagram.source
 
         let outcome: ProbeOutcome
         switch packet.message {
         case .echoReply(let replyIdentifier, let sequence, _):
+            guard IPAddress.ipv4(endpoint).matchesEchoSource(source), case .ipv4(let router) = source else { return }
             #if !os(Linux)
             guard replyIdentifier == identifier else { return }
             #else
@@ -246,7 +249,7 @@ public actor Tracer {
             #endif
             guard sequence == awaiting.sequence else { return }
             outcome = .answered(
-                router: packet.source ?? endpoint ?? IPv4Endpoint(rawAddress: 0),
+                router: router,
                 roundTripTime: receivedAt.duration(since: awaiting.sentAt),
                 kind: .destination)
 
