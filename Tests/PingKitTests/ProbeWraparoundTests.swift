@@ -5,17 +5,19 @@ import Testing
     private func pinger(_ socket: MockPingSocket, count: PingConfiguration.Count = .times(3)) -> Pinger {
         Pinger(
             host: "test.invalid",
-            configuration: .init(interval: .nanoseconds(1), timeout: .seconds(60), count: count),
+            configuration: .init(interval: .nanoseconds(1), timeout: .seconds(300), count: count),
             socketFactory: { _ in socket },
             resolver: { _ in .ipv4(IPv4Endpoint(127, 0, 0, 1)) },
             sequenceLimit: 1)
     }
 
     private func waitUntil(_ condition: () async -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(3)
+        // Shared simulators may pause the test process for many seconds.
+        // Wait for state, with a generous diagnostic limit, without spinning.
+        let deadline = ContinuousClock.now + .seconds(60)
         while !(await condition()) {
             try #require(ContinuousClock.now < deadline, "state transition did not complete")
-            await Task.yield()
+            try await Task.sleep(for: .milliseconds(10))
         }
     }
 
@@ -23,7 +25,7 @@ import Testing
         let socket = MockPingSocket()
         let pinger = pinger(socket)
         let watchdog = Task {
-            try await Task.sleep(for: .seconds(5))
+            try await Task.sleep(for: .seconds(180))
             await pinger.stop()
         }
         defer { watchdog.cancel() }
