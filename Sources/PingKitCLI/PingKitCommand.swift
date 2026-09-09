@@ -54,8 +54,8 @@ public struct Ping: AsyncParsableCommand {
         if let count, count <= 0 {
             throw ValidationError("--count must be greater than zero")
         }
-        guard interval > 0 else { throw ValidationError("--interval must be greater than zero") }
-        guard timeout > 0 else { throw ValidationError("--timeout must be greater than zero") }
+        try validateSeconds(interval, option: "--interval")
+        try validateSeconds(timeout, option: "--timeout")
         guard (0...65_507).contains(payloadSize) else {
             throw ValidationError("--payload-size must be between 0 and 65507")
         }
@@ -156,7 +156,7 @@ public struct Trace: AsyncParsableCommand {
         guard (1...16).contains(probesPerHop) else {
             throw ValidationError("--queries must be between 1 and 16")
         }
-        guard timeout > 0 else { throw ValidationError("--timeout must be greater than zero") }
+        try validateSeconds(timeout, option: "--timeout")
         guard (0...65_507).contains(payloadSize) else {
             throw ValidationError("--payload-size must be between 0 and 65507")
         }
@@ -184,6 +184,14 @@ public struct Trace: AsyncParsableCommand {
             throw ExitCode(2)
         }
         if !reached { throw ExitCode.failure }
+    }
+}
+
+private func validateSeconds(_ seconds: Double, option: String) throws {
+    // Keep conversion and nanosecond-based clock deadlines within range.
+    guard seconds.isFinite, seconds > 0, seconds <= Double(Int32.max),
+          Duration.seconds(seconds) > .zero else {
+        throw ValidationError("\(option) must be positive, finite, and at most 2147483647 seconds")
     }
 }
 
