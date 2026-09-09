@@ -15,6 +15,10 @@ final class ICMPv6Socket: PingSocket, @unchecked Sendable {
     private let queue = DispatchQueue(label: "PingKit.ICMPv6Socket")
     private var readSource: (any DispatchSourceRead)?
     private var isClosed = false
+    private let queueKey = DispatchSpecificKey<Bool>()
+    // Only accessed on queue; outgoing datagrams own a compact copy.
+    private var receiveBuffer = [UInt8](repeating: 0, count: 65_535)
+    private var controlBuffer = [UInt8](repeating: 0, count: 256)
 
     #if canImport(Darwin)
     // RFC 3542 macros hidden from Swift by Darwin's feature flags.
@@ -65,6 +69,7 @@ final class ICMPv6Socket: PingSocket, @unchecked Sendable {
 
         self.descriptor = fd
         self.destination = destination
+        queue.setSpecific(key: queueKey, value: true)
     }
 
     #if canImport(Darwin)
@@ -93,8 +98,10 @@ final class ICMPv6Socket: PingSocket, @unchecked Sendable {
             guard readSource == nil else { return }
             let fd = descriptor
             let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
-            source.setEventHandler {
-                guard let datagram = Self.receiveDatagram(fd) else { return }
+            source.setEventHandler { [weak self] in
+                guard let self,
+                      let datagram = Self.receiveDatagram(
+                        fd, buffer: &self.receiveBuffer, control: &self.controlBuffer) else { return }
                 receiveHandler(datagram)
             }
             source.setCancelHandler { Self.closeDescriptor(fd) }
@@ -138,12 +145,20 @@ final class ICMPv6Socket: PingSocket, @unchecked Sendable {
     }
 
     func close() {
-        queue.sync {
-            guard !isClosed else { return }
-            isClosed = true
-            if let readSource { readSource.cancel() } else { Self.closeDescriptor(descriptor) }
-            readSource = nil
+        // The receive handler temporarily retains self. Its final release
+        // may run deinit on this queue, where a nested sync would deadlock.
+        if DispatchQueue.getSpecific(key: queueKey) == true {
+            closeOnQueue()
+        } else {
+            queue.sync { closeOnQueue() }
         }
+    }
+
+    private func closeOnQueue() {
+        guard !isClosed else { return }
+        isClosed = true
+        if let readSource { readSource.cancel() } else { Self.closeDescriptor(descriptor) }
+        readSource = nil
     }
 
     private static func closeDescriptor(_ fd: Int32) {
@@ -154,9 +169,9 @@ final class ICMPv6Socket: PingSocket, @unchecked Sendable {
         #endif
     }
 
-    private static func receiveDatagram(_ fd: Int32) -> SocketDatagram? {
-        var buffer = [UInt8](repeating: 0, count: 65_535)
-        var control = [UInt8](repeating: 0, count: 256)
+    private static func receiveDatagram(
+        _ fd: Int32, buffer: inout [UInt8], control: inout [UInt8]
+    ) -> SocketDatagram? {
         var sourceAddress = sockaddr_in6()
         var receivedAt: MonotonicTimestamp?
         var hopLimit: UInt8?
@@ -189,12 +204,12 @@ final class ICMPv6Socket: PingSocket, @unchecked Sendable {
         }
 
         guard count > 0 else { return nil }
-        buffer.removeLast(buffer.count - count)
+        let bytes = Array(buffer.prefix(count))
         let sourceBytes = withUnsafeBytes(of: sourceAddress.sin6_addr) { Array($0) }
         let source = IPv6Endpoint(bytes: sourceBytes, scopeID: sourceAddress.sin6_scope_id)
             .map(IPAddress.ipv6)
         return SocketDatagram(
-            bytes: buffer,
+            bytes: bytes,
             receivedAt: receivedAt ?? MonotonicTimestamp.now(),
             source: source,
             hopLimit: hopLimit)

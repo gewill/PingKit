@@ -30,6 +30,8 @@ public struct PingConfiguration: Sendable {
     public var timeToLive: Int?
     /// Address family used to resolve and contact the host.
     public var addressFamily: AddressFamily
+    /// Bounds on public event and internal datagram buffering.
+    public var bufferLimits: PingBufferLimits
 
     public init(
         interval: Duration = .seconds(1),
@@ -37,7 +39,8 @@ public struct PingConfiguration: Sendable {
         count: Count = .unlimited,
         payloadSize: Int = 56,
         timeToLive: Int? = nil,
-        addressFamily: AddressFamily = .automatic
+        addressFamily: AddressFamily = .automatic,
+        bufferLimits: PingBufferLimits = PingBufferLimits()
     ) {
         self.interval = interval
         self.timeout = timeout
@@ -45,10 +48,12 @@ public struct PingConfiguration: Sendable {
         self.payloadSize = payloadSize
         self.timeToLive = timeToLive
         self.addressFamily = addressFamily
+        self.bufferLimits = bufferLimits
     }
 
     func validate() throws {
-        guard interval > .zero,
+        guard bufferLimits.isValid,
+              interval > .zero,
               timeout > .zero,
               payloadSize >= 0,
               payloadSize <= 65_507,

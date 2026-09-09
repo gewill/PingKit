@@ -11,6 +11,9 @@
 /// Same lifecycle contract as `Pinger`: `hops` supports a single consumer,
 /// cancelling the consuming task stops the trace, and `stop()` is an
 /// idempotent explicit shutdown.
+/// Buffer overflow aborts the run; buffered hops drain before
+/// ``PingError/bufferOverflow(buffer:capacity:)`` is thrown. Configure limits
+/// through ``TracerouteConfiguration/bufferLimits``.
 ///
 /// Platform note: Darwin delivers ICMP errors to the unprivileged ICMP
 /// socket, so hop discovery works there. Linux routes them to the socket
@@ -135,14 +138,30 @@ public actor Tracer {
         }
         self.endpoint = endpoint
 
+        let (stream, continuation) = AsyncThrowingStream<TracerouteHop, any Error>.makeStream(
+            bufferingPolicy: .bufferingOldest(configuration.bufferLimits.events))
+        self.continuation = continuation
+        continuation.onTermination = { [weak self] _ in
+            guard let self else { return }
+            Task { await self.stop() }
+        }
+
         do {
             let socket = try socketFactory(endpoint)
             self.socket = socket
-            let (datagrams, receiveContinuation) = AsyncStream<SocketDatagram>.makeStream()
+            let receiveCapacity = configuration.bufferLimits.receivedDatagrams
+            let (datagrams, receiveContinuation) = AsyncStream<SocketDatagram>.makeStream(
+                bufferingPolicy: .bufferingOldest(receiveCapacity))
             self.receiveContinuation = receiveContinuation
             try socket.activate { [weak self] datagram in
                 guard self != nil else { return }
-                receiveContinuation.yield(datagram)
+                if case .dropped = receiveContinuation.yield(datagram) {
+                    // Finish synchronously at the producer so normal completion
+                    // cannot hide this loss while the actor drains earlier data.
+                    continuation.finish(throwing: PingError.bufferOverflow(
+                        buffer: .receivedDatagrams, capacity: receiveCapacity))
+                    receiveContinuation.finish()
+                }
             }
             receiveTask = Task { [weak self] in
                 for await datagram in datagrams {
@@ -155,12 +174,6 @@ public actor Tracer {
             throw error
         }
 
-        let (stream, continuation) = AsyncThrowingStream<TracerouteHop, any Error>.makeStream()
-        self.continuation = continuation
-        continuation.onTermination = { [weak self] _ in
-            guard let self else { return }
-            Task { await self.stop() }
-        }
         runTask = Task { await self.runTrace() }
         return stream
     }
@@ -190,7 +203,7 @@ public actor Tracer {
                     return
                 }
             }
-            continuation?.yield(TracerouteHop(ttl: ttl, probes: probes))
+            guard emit(TracerouteHop(ttl: ttl, probes: probes)) else { return }
             if finished { break }
         }
         stopInternal()
@@ -284,6 +297,26 @@ public actor Tracer {
         #else
         return probe.identifier == identifier
         #endif
+    }
+
+    @discardableResult
+    private func emit(_ event: TracerouteHop) -> Bool {
+        guard case .running = state, let continuation else { return false }
+        switch continuation.yield(event) {
+        case .enqueued:
+            return true
+        case .dropped:
+            continuation.finish(throwing: PingError.bufferOverflow(
+                buffer: .events, capacity: configuration.bufferLimits.events))
+            stopInternal()
+            return false
+        case .terminated:
+            stopInternal()
+            return false
+        @unknown default:
+            stopInternal()
+            return false
+        }
     }
 
     private func stopInternal() {

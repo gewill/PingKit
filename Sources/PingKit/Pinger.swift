@@ -19,6 +19,10 @@
 ///   the sequence.
 /// - Breaking out of the loop without cancelling does **not** stop the pinger
 ///   by itself in all cases — call `stop()` (idempotent) when done early.
+/// - Buffers are bounded by ``PingConfiguration/bufferLimits``. Overflow
+///   aborts outstanding probes; buffered events drain before a
+///   ``PingError/bufferOverflow(buffer:capacity:)`` error. A `.sent` event
+///   may therefore lack its terminal event when the run throws or is stopped.
 public actor Pinger {
     typealias SocketFactory = @Sendable (ResolvedEndpoint) throws -> any PingSocket
     typealias HostResolver = @Sendable (String) async throws -> ResolvedEndpoint
@@ -197,17 +201,33 @@ public actor Pinger {
         }
         self.endpoint = endpoint
 
+        let (stream, continuation) = AsyncThrowingStream<PingResponse, any Error>.makeStream(
+            bufferingPolicy: .bufferingOldest(configuration.bufferLimits.events))
+        self.continuation = continuation
+        continuation.onTermination = { [weak self] _ in
+            guard let self else { return }
+            Task { await self.stop() }
+        }
+
         do {
             let socket = try socketFactory(endpoint)
             self.socket = socket
             if let timeToLive = configuration.timeToLive {
                 try socket.setTimeToLive(timeToLive)
             }
-            let (datagrams, receiveContinuation) = AsyncStream<SocketDatagram>.makeStream()
+            let receiveCapacity = configuration.bufferLimits.receivedDatagrams
+            let (datagrams, receiveContinuation) = AsyncStream<SocketDatagram>.makeStream(
+                bufferingPolicy: .bufferingOldest(receiveCapacity))
             self.receiveContinuation = receiveContinuation
             try socket.activate { [weak self] datagram in
                 guard self != nil else { return }
-                receiveContinuation.yield(datagram)
+                if case .dropped = receiveContinuation.yield(datagram) {
+                    // Finish synchronously at the producer so normal completion
+                    // cannot hide this loss while the actor drains earlier data.
+                    continuation.finish(throwing: PingError.bufferOverflow(
+                        buffer: .receivedDatagrams, capacity: receiveCapacity))
+                    receiveContinuation.finish()
+                }
             }
             receiveTask = Task { [weak self] in
                 for await datagram in datagrams {
@@ -220,12 +240,6 @@ public actor Pinger {
             throw error
         }
 
-        let (stream, continuation) = AsyncThrowingStream<PingResponse, any Error>.makeStream()
-        self.continuation = continuation
-        continuation.onTermination = { [weak self] _ in
-            guard let self else { return }
-            Task { await self.stop() }
-        }
         startSendLoop()
         return stream
     }
@@ -274,7 +288,7 @@ public actor Pinger {
             }
         }
         guard case .running = state, !Task.isCancelled,
-              let endpoint, let socket, let continuation else { return false }
+              let endpoint, let socket else { return false }
         let payload = ICMPv4.payloadPattern(size: configuration.payloadSize)
         let packet: [UInt8]
         switch endpoint {
@@ -301,12 +315,12 @@ public actor Pinger {
             let failureErrno: Int32
             if case let PingError.sendFailed(number) = error { failureErrno = number }
             else { failureErrno = 0 }
-            continuation.yield(.sendFailed(sequence: sequence, errno: failureErrno))
+            guard emit(.sendFailed(sequence: sequence, errno: failureErrno)) else { return false }
             completeProbe()
             return true
         }
         transmitted += 1
-        continuation.yield(.sent(sequence: sequence))
+        guard emit(.sent(sequence: sequence)) else { return false }
         let timeout = configuration.timeout
         let generation = transmitted
         let timeoutTask = Task { [weak self] in
@@ -404,7 +418,7 @@ public actor Pinger {
         guard let probe = takeProbe(sequence: sequence) else { return }
         let rtt = receivedAt.duration(since: probe.sentAt)
         recordRTT(rtt)
-        continuation?.yield(.reply(PingReply(
+        emit(.reply(PingReply(
             sequence: sequence,
             roundTripTime: rtt,
             timeToLive: hopLimit,
@@ -419,7 +433,7 @@ public actor Pinger {
     ) {
         guard let probeReference, probeMatches(probeReference),
               takeProbe(sequence: probeReference.sequence) != nil else { return }
-        continuation?.yield(response(probeReference.sequence))
+        emit(response(probeReference.sequence))
         completeProbe()
     }
 
@@ -427,7 +441,7 @@ public actor Pinger {
         guard case .running = state else { return }
         guard pending[sequence]?.generation == generation,
               takeProbe(sequence: sequence) != nil else { return }
-        continuation?.yield(.timeout(sequence: sequence))
+        emit(.timeout(sequence: sequence))
         completeProbe()
     }
 
@@ -466,6 +480,26 @@ public actor Pinger {
         completed += 1
         if case .times(let n) = configuration.count, completed >= n {
             stopInternal()
+        }
+    }
+
+    @discardableResult
+    private func emit(_ event: PingResponse) -> Bool {
+        guard case .running = state, let continuation else { return false }
+        switch continuation.yield(event) {
+        case .enqueued:
+            return true
+        case .dropped:
+            continuation.finish(throwing: PingError.bufferOverflow(
+                buffer: .events, capacity: configuration.bufferLimits.events))
+            stopInternal()
+            return false
+        case .terminated:
+            stopInternal()
+            return false
+        @unknown default:
+            stopInternal()
+            return false
         }
     }
 

@@ -8,21 +8,26 @@ public struct TracerouteConfiguration: Sendable {
     public var timeout: Duration
     /// Echo payload size in bytes.
     public var payloadSize: Int
+    /// Bounds on public hop and internal datagram buffering.
+    public var bufferLimits: PingBufferLimits
 
     public init(
         maxHops: Int = 30,
         probesPerHop: Int = 3,
         timeout: Duration = .seconds(1),
-        payloadSize: Int = 16
+        payloadSize: Int = 16,
+        bufferLimits: PingBufferLimits = PingBufferLimits()
     ) {
         self.maxHops = maxHops
         self.probesPerHop = probesPerHop
         self.timeout = timeout
         self.payloadSize = payloadSize
+        self.bufferLimits = bufferLimits
     }
 
     func validate() throws {
-        guard (1...255).contains(maxHops),
+        guard bufferLimits.isValid,
+              (1...255).contains(maxHops),
               (1...16).contains(probesPerHop),
               timeout > .zero,
               payloadSize >= 0,
