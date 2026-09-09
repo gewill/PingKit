@@ -13,9 +13,21 @@ import Glibc
 /// ``Pinger/ping(_:timeout:payloadSize:addressFamily:)`` converts them into
 /// the matching case below.
 public enum PingError: Error, Sendable, Equatable {
+    /// The queue that could not retain another item.
+    public enum Buffer: Sendable, Equatable {
+        /// Public events awaiting the sequence's consumer.
+        case events
+        /// Raw socket datagrams awaiting processing by the actor.
+        case receivedDatagrams
+    }
+
+    /// A local queue filled. The run stops and cancels outstanding probes;
+    /// already buffered public events drain before this error is thrown.
+    /// This is local overload, not a network timeout or packet-loss event.
+    case bufferOverflow(buffer: Buffer, capacity: Int)
     /// The configuration failed validation as the run started: a
     /// non-positive interval or timeout, a payload outside `0...65507`, a
-    /// `.times(n)` count below 1, a TTL outside `1...255`, or — for a trace
+    /// `.times(n)` count below 1, a non-positive buffer limit, a TTL outside `1...255`, or — for a trace
     /// — `maxHops` outside `1...255` or `probesPerHop` outside `1...16`.
     case invalidConfiguration
     /// DNS resolution failed; `code` is the `getaddrinfo` error code.
@@ -63,6 +75,8 @@ public enum PingError: Error, Sendable, Equatable {
 extension PingError: CustomStringConvertible {
     public var description: String {
         switch self {
+        case .bufferOverflow(let buffer, let capacity):
+            return "\(buffer) buffer exceeded capacity \(capacity); run stopped"
         case .invalidConfiguration:
             return "invalid ping configuration"
         case .resolutionFailed(let host, let code):

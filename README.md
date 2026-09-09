@@ -146,6 +146,17 @@ Linux caveat: the kernel delivers ICMP errors to the socket error queue,
 which PingKit doesn't read yet — intermediate hops show as timeouts there;
 the destination hop still resolves.
 
+## Buffering
+
+Ping and trace queues are bounded by their configuration's `bufferLimits`
+(default: 1,024 public events/hops and 256 raw datagrams). A slow consumer
+does not slow the probe schedule. If either queue fills, the run stops,
+cancels outstanding probes, drains already buffered public events in order,
+and throws `PingError.bufferOverflow(buffer:capacity:)`. This local overload
+is distinct from a network timeout; the delivered event prefix may include
+`.sent` without a terminal event. Increase the relevant limit or consume
+events promptly before starting a new run.
+
 ## CLI
 
 ```

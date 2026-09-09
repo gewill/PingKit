@@ -18,6 +18,10 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
     private let queue = DispatchQueue(label: "PingKit.ICMPv4Socket")
     private var readSource: (any DispatchSourceRead)?
     private var isClosed = false
+    private let queueKey = DispatchSpecificKey<Bool>()
+    // Only accessed on queue; outgoing datagrams own a compact copy.
+    private var receiveBuffer = [UInt8](repeating: 0, count: 65_535)
+    private var controlBuffer = [UInt8](repeating: 0, count: 256)
 
     init(destination: IPv4Endpoint) throws {
         #if canImport(Darwin)
@@ -39,6 +43,7 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
         #endif
         self.descriptor = fd
         self.destination = destination.rawAddress
+        queue.setSpecific(key: queueKey, value: true)
     }
 
     deinit {
@@ -51,8 +56,10 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
             guard readSource == nil else { return }
             let fd = descriptor
             let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
-            source.setEventHandler {
-                guard let datagram = Self.receiveDatagram(fd) else { return }
+            source.setEventHandler { [weak self] in
+                guard let self,
+                      let datagram = Self.receiveDatagram(
+                        fd, buffer: &self.receiveBuffer, control: &self.controlBuffer) else { return }
                 receiveHandler(datagram)
             }
             // The descriptor is owned by the source once activated; closing it
@@ -93,16 +100,20 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
     }
 
     func close() {
-        queue.sync {
-            guard !isClosed else { return }
-            isClosed = true
-            if let readSource {
-                readSource.cancel()
-            } else {
-                Self.closeDescriptor(descriptor)
-            }
-            readSource = nil
+        // The receive handler temporarily retains self. Its final release
+        // may run deinit on this queue, where a nested sync would deadlock.
+        if DispatchQueue.getSpecific(key: queueKey) == true {
+            closeOnQueue()
+        } else {
+            queue.sync { closeOnQueue() }
         }
+    }
+
+    private func closeOnQueue() {
+        guard !isClosed else { return }
+        isClosed = true
+        if let readSource { readSource.cancel() } else { Self.closeDescriptor(descriptor) }
+        readSource = nil
     }
 
     private static func closeDescriptor(_ fd: Int32) {
@@ -118,9 +129,9 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
     #if canImport(Darwin)
     /// Reads one datagram with `recvmsg`, extracting the kernel's
     /// `SCM_TIMESTAMP_MONOTONIC` arrival timestamp when present.
-    private static func receiveDatagram(_ fd: Int32) -> SocketDatagram? {
-        var buffer = [UInt8](repeating: 0, count: 65_535)
-        var control = [UInt8](repeating: 0, count: 256)
+    private static func receiveDatagram(
+        _ fd: Int32, buffer: inout [UInt8], control: inout [UInt8]
+    ) -> SocketDatagram? {
         var kernelTimestamp: MonotonicTimestamp?
 
         let count: Int = buffer.withUnsafeMutableBytes { bufferPointer in
@@ -148,8 +159,8 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
 
         let receivedAt = kernelTimestamp ?? MonotonicTimestamp.now()
         guard count > 0 else { return nil }
-        buffer.removeLast(buffer.count - count)
-        return SocketDatagram(bytes: buffer, receivedAt: receivedAt)
+        let bytes = Array(buffer.prefix(count))
+        return SocketDatagram(bytes: bytes, receivedAt: receivedAt)
     }
 
     /// Walks the control messages for `SCM_TIMESTAMP_MONOTONIC`, whose
@@ -181,8 +192,9 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
     #else
     /// Linux delivers bare ICMP; retain recvfrom's source metadata so the
     /// actors can validate reply ownership without platform-specific code.
-    private static func receiveDatagram(_ fd: Int32) -> SocketDatagram? {
-        var buffer = [UInt8](repeating: 0, count: 65_535)
+    private static func receiveDatagram(
+        _ fd: Int32, buffer: inout [UInt8], control: inout [UInt8]
+    ) -> SocketDatagram? {
         var address = sockaddr_in()
         var length = socklen_t(MemoryLayout<sockaddr_in>.size)
         let count = withUnsafeMutablePointer(to: &address) { pointer in
@@ -192,11 +204,11 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
         }
         let receivedAt = MonotonicTimestamp.now()
         guard count > 0 else { return nil }
-        buffer.removeLast(buffer.count - count)
+        let bytes = Array(buffer.prefix(count))
         let source: IPAddress? = address.sin_family == sa_family_t(AF_INET)
             && Int(length) >= MemoryLayout<sockaddr_in>.size
             ? .ipv4(IPv4Endpoint(rawAddress: address.sin_addr.s_addr)) : nil
-        return SocketDatagram(bytes: buffer, receivedAt: receivedAt, source: source)
+        return SocketDatagram(bytes: bytes, receivedAt: receivedAt, source: source)
     }
     #endif
 }
