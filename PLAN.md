@@ -1,6 +1,6 @@
 # Swift Ping 库规划（PingKit）
 
-> 状态：M1–M8 已完成，当前版本 0.6.2（文档完备 + Swift Package Index 提交；无 API 与行为变更）。更新日期：2026-08-29
+> 状态：M1–M8 已完成，当前版本 0.7.0（有界缓冲与显式超限、回包归属及序号回绕修复、CLI/Demo/CI 加固）。更新日期：2026-09-09
 
 ## 1. 背景与现有生态
 
@@ -159,7 +159,12 @@ Ping/
 - ✅ **进入 Swift Package Index 流程**：仓库转 public，提交为 SwiftPackageIndex/PackageList#15025；README 增加 Swift 版本、平台、Release badge（SPI 构建完成前显示 pending，之后自动填充）。
 - 🔧 **测试竞态修复**：`duplicateReplyCountedOnce` 原先靠 1ms 轮询任务抢 50ms 探针超时，在 CI 的 iOS 模拟器上偶发失败；改为经 `MockPingSocket.repliesForIndex` 在 `send` 内联投递重复回包，断言不变（#20）。仅测试改动。
 
-## 6.8 待发布修复
+## 6.8 0.7.0 已发布能力
+
+- **测试诊断期限（#36）**：iOS CI 曾在调度拥塞下连纯计算测试也耗时 20–30 秒，使新增 3 秒状态等待误报。改用有界低频轮询，探针计时和 watchdog 放在断言窗口外；保留行为断言，不将回包丢失放宽为成功。
+
+- **兼容性**：新增 `PingBufferLimits` 与 `PingError.bufferOverflow`，消费方穷举 PingError 时需增加分支；慢消费者可能收到显式超限错误。库仍为零依赖，平台最低版本不变。
+- **Demo/安装文档（#25、#27）**：公开仓库无需凭据；Demo 最近 500 行，裁剪同步清理 pending，迟到终态作为新行。
 
 - #28 正式 CI 设置 `PINGKIT_REQUIRE_ICMP=1`，IPv4/IPv6 能力缺失即失败，Linux sysctl 失败不再降级成功。iOS 通过 `TEST_RUNNER_` 前缀传入测试进程（[Apple 环境变量说明](https://developer.apple.com/documentation/xcode/environment-variable-reference)）。本地仅权限不足或协议族不可用允许回环测试 skip；其他 socket/sendto 错误由始终执行的检查报告失败，保留 syscall 和 errno 便于诊断。
 
@@ -183,7 +188,7 @@ Ping/
 
 - 协议层纯函数直接单测（黄金样本：用 tcpdump 抓真实 ping 包做 fixture）。
 - Socket 层通过内部 `PingSocket` 协议，用 mock 注入回包/超时/差错报文，测状态机；若未来开放注入 API，需按 0.4 候选项重新设计公共契约。
-- 集成测试 ping `127.0.0.1` 与 `::1`；测试前先探测对应 ICMP datagram socket 能力，不支持时明确 skip，不能把权限问题误判为功能回归。外网目标只放本地手动测试。
+- 集成测试 ping `127.0.0.1` 与 `::1`；测试前先探测对应 ICMP datagram socket 能力，本地对权限或协议族不可用明确 skip，正式 CI 强制两种能力可用；意外 syscall 错误始终失败。外网目标只放本地手动测试。
 - 生命周期测试覆盖 Task cancellation、提前退出迭代、显式 `stop()`、重复关闭和第二消费者接入，验证后台发送任务与 socket 均被释放。
 
 ## 8. 风险
