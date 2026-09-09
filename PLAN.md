@@ -161,6 +161,8 @@ Ping/
 
 ## 6.8 待发布修复
 
+- #28 正式 CI 设置 `PINGKIT_REQUIRE_ICMP=1`，IPv4/IPv6 能力缺失即失败，Linux sysctl 失败不再降级成功。iOS 通过 `TEST_RUNNER_` 前缀传入测试进程（[Apple 环境变量说明](https://developer.apple.com/documentation/xcode/environment-variable-reference)）。本地仅权限不足或协议族不可用允许回环测试 skip；其他 socket/sendto 错误由始终执行的检查报告失败，保留 syscall 和 errno 便于诊断。
+
 - #26 采用有界缓冲、超限报错终止：`PingBufferLimits` 默认公开事件 1,024、原始收包 256（最大包字节约 16 MiB，普通 echo 小得多）。不让慢消费者改变探测节奏；保留已入队公开事件的顺序，取消 pending 后抛出区分队列的 `bufferOverflow`，异常终止允许不完整事件前缀。原始收包溢出在回调中同步结束公开流，避免被先前有效回复的正常结束掩盖；不为每包创建 Task。socket 私有队列复用接收/控制存储，只复制实际包长；关闭兼容回调最后一次释放触发的队列内 deinit。选择依据：[SE-0314](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0314-async-stream.md) 的 yield 不等待、缓冲策略可丢弃；背压会改变采样，静默丢事件会破坏调用者完整性判断。慢消费者、突发收包、两种 socket 的紧凑存储和跨读取所有权由测试覆盖。
 
 - CLI 时间参数在转换前拒绝非有限值、非正值和超过 `Int32.max` 秒的值，转换后拒绝零。上限保证 Duration 转换及纳秒时钟期限均有余量，避免用户输入触发运行时 trap（#24）。
