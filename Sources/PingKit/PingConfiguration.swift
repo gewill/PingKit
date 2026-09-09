@@ -15,6 +15,8 @@ public struct PingConfiguration: Sendable {
     }
 
     /// Delay between successive echo requests.
+    /// If a wrapped 16-bit sequence number is still in flight, sending
+    /// waits for that probe's terminal event before reusing the number.
     public var interval: Duration
     /// How long to wait for each reply before reporting `.timeout`.
     public var timeout: Duration

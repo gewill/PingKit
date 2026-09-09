@@ -159,7 +159,11 @@ Ping/
 - ✅ **进入 Swift Package Index 流程**：仓库转 public，提交为 SwiftPackageIndex/PackageList#15025；README 增加 Swift 版本、平台、Release badge（SPI 构建完成前显示 pending，之后自动填充）。
 - 🔧 **测试竞态修复**：`duplicateReplyCountedOnce` 原先靠 1ms 轮询任务抢 50ms 探针超时，在 CI 的 iOS 模拟器上偶发失败；改为经 `MockPingSocket.repliesForIndex` 在 `send` 内联投递重复回包，断言不变（#20）。仅测试改动。
 
-## 6.8 Backlog（有价值但不排期）
+## 6.8 待发布修复
+
+- **在途序号回绕（#22）**：16 位序号复用前若旧探针仍在等待，暂停单一发送循环，待旧探针终态后继续，不提前制造超时、不覆盖 pending。此边界下实际发送间隔可延长；stop/cancellation 同时唤醒等待者。超时回调携带发送代次，陈旧回调不能移除新探针。回归测试通过缩小内部序号空间驱动同一状态机，覆盖回绕、陈旧超时、停止与取消；报文仍使用 16 位序号，复用后才到达且标识完全相同的旧网络回包仍无法仅凭序号区分。
+
+## 6.9 Backlog（有价值但不排期）
 
 - **Linux Traceroute 完整中间跳**：读取 ICMP socket error queue（`MSG_ERRQUEUE`）。
 - **IPv6 Traceroute**：在 IPv4 traceroute 的 Linux error queue 缺口解决后，再统一设计双栈 traceroute 地址与错误语义。
