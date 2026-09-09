@@ -64,6 +64,14 @@ public enum ICMPv4 {
     /// Errors are instead authenticated by matching the quoted echo
     /// identifier/sequence against a pending probe.
     public static func parseMessage(_ bytes: ArraySlice<UInt8>, verifyChecksum: Bool = true) throws -> ICMPv4Message {
+        try parseMessage(bytes, verifyChecksum: verifyChecksum, expectedDestination: nil)
+    }
+
+    static func parseMessage(
+        _ bytes: ArraySlice<UInt8>,
+        verifyChecksum: Bool = true,
+        expectedDestination: IPv4Endpoint?
+    ) throws -> ICMPv4Message {
         guard bytes.count >= headerSize else { throw PacketParseError.truncated }
         let base = bytes.startIndex
         let type = bytes[base]
@@ -85,9 +93,9 @@ public enum ICMPv4 {
         case echoRequestType:
             return .echoRequest(identifier: bigEndian16(at: 4), sequence: bigEndian16(at: 6))
         case destinationUnreachableType:
-            return .destinationUnreachable(code: code, probe: parseEmbeddedProbe(bytes[(base + headerSize)...]))
+            return .destinationUnreachable(code: code, probe: parseEmbeddedProbe(bytes[(base + headerSize)...], expectedDestination: expectedDestination))
         case timeExceededType:
-            return .timeExceeded(code: code, probe: parseEmbeddedProbe(bytes[(base + headerSize)...]))
+            return .timeExceeded(code: code, probe: parseEmbeddedProbe(bytes[(base + headerSize)...], expectedDestination: expectedDestination))
         default:
             return .other(type: type, code: code)
         }
@@ -97,8 +105,9 @@ public enum ICMPv4 {
     /// original datagram. If that original datagram was one of our echo
     /// requests, extract its identifier/sequence so the error can be matched
     /// to a pending probe.
-    static func parseEmbeddedProbe(_ bytes: ArraySlice<UInt8>) -> EmbeddedProbe? {
+    static func parseEmbeddedProbe(_ bytes: ArraySlice<UInt8>, expectedDestination: IPv4Endpoint? = nil) -> EmbeddedProbe? {
         guard let header = try? IPv4.parseHeader(bytes), header.protocolNumber == 1 else { return nil }
+        if let expectedDestination, header.destination != expectedDestination { return nil }
         let icmp = bytes[(bytes.startIndex + header.headerLength)...]
         guard icmp.count >= headerSize else { return nil }
         let base = icmp.startIndex

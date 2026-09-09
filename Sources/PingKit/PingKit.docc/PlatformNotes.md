@@ -24,6 +24,16 @@ limit through ``PingReply/timeToLive``. ICMPv6 Destination Unreachable, Time
 Exceeded, Packet Too Big, and Parameter Problem messages map to typed
 ``PingResponse`` events. ``Tracer`` remains IPv4-only in this release.
 
+## Reply Ownership
+
+For unicast targets, an Echo Reply must come from the resolved destination;
+IPv6 link-local replies must also match its interface scope. Replies without
+source metadata are ignored. ICMP errors instead match the destination
+quoted inside the error, so intermediate routers can still report failures.
+Source checks do not distinguish two sessions using identical identifiers
+against the same target. Full multicast and broadcast probing is not part
+of the supported contract.
+
 ## Apple Platforms
 
 No entitlement is needed on iOS — unprivileged ICMP sockets work inside the

@@ -329,14 +329,16 @@ public actor Pinger {
     }
 
     private func handleIPv4Datagram(_ datagram: SocketDatagram, destination: IPv4Endpoint) {
-        guard let packet = ReceivedPacket.parse(datagram.bytes) else { return }
+        guard let packet = ReceivedPacket.parse(datagram.bytes, expectedDestination: destination) else { return }
         switch packet.message {
         case .echoReply(let replyIdentifier, let sequence, let payloadCount):
+            let source = packet.source.map(IPAddress.ipv4) ?? datagram.source
+            guard IPAddress.ipv4(destination).matchesEchoSource(source), let source else { return }
             handleReply(
                 identifier: replyIdentifier,
                 sequence: sequence,
                 messageSize: ICMPv4.headerSize + payloadCount,
-                from: .ipv4(packet.source ?? destination),
+                from: source,
                 hopLimit: packet.timeToLive,
                 receivedAt: datagram.receivedAt)
 
@@ -354,14 +356,15 @@ public actor Pinger {
     }
 
     private func handleIPv6Datagram(_ datagram: SocketDatagram, destination: IPv6Endpoint) {
-        guard let message = try? ICMPv6.parseMessage(datagram.bytes[...]) else { return }
+        guard let message = try? ICMPv6.parseMessage(datagram.bytes[...], expectedDestination: destination) else { return }
         switch message {
         case .echoReply(let replyIdentifier, let sequence, let payloadCount):
+            guard IPAddress.ipv6(destination).matchesEchoSource(datagram.source), let source = datagram.source else { return }
             handleReply(
                 identifier: replyIdentifier,
                 sequence: sequence,
                 messageSize: ICMPv6.headerSize + payloadCount,
-                from: datagram.source ?? .ipv6(destination),
+                from: source,
                 hopLimit: datagram.hopLimit,
                 receivedAt: datagram.receivedAt)
 

@@ -52,8 +52,8 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
             let fd = descriptor
             let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
             source.setEventHandler {
-                guard let (datagram, receivedAt) = Self.receiveDatagram(fd) else { return }
-                receiveHandler(SocketDatagram(bytes: datagram, receivedAt: receivedAt))
+                guard let datagram = Self.receiveDatagram(fd) else { return }
+                receiveHandler(datagram)
             }
             // The descriptor is owned by the source once activated; closing it
             // in the cancel handler guarantees no read after close.
@@ -118,7 +118,7 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
     #if canImport(Darwin)
     /// Reads one datagram with `recvmsg`, extracting the kernel's
     /// `SCM_TIMESTAMP_MONOTONIC` arrival timestamp when present.
-    private static func receiveDatagram(_ fd: Int32) -> ([UInt8], MonotonicTimestamp)? {
+    private static func receiveDatagram(_ fd: Int32) -> SocketDatagram? {
         var buffer = [UInt8](repeating: 0, count: 65_535)
         var control = [UInt8](repeating: 0, count: 256)
         var kernelTimestamp: MonotonicTimestamp?
@@ -149,7 +149,7 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
         let receivedAt = kernelTimestamp ?? MonotonicTimestamp.now()
         guard count > 0 else { return nil }
         buffer.removeLast(buffer.count - count)
-        return (buffer, receivedAt)
+        return SocketDatagram(bytes: buffer, receivedAt: receivedAt)
     }
 
     /// Walks the control messages for `SCM_TIMESTAMP_MONOTONIC`, whose
@@ -179,15 +179,24 @@ final class ICMPv4Socket: PingSocket, @unchecked Sendable {
     }
 
     #else
-    /// Linux: plain `recv`, stamped at read time on the same clock used for
-    /// send timestamps.
-    private static func receiveDatagram(_ fd: Int32) -> ([UInt8], MonotonicTimestamp)? {
+    /// Linux delivers bare ICMP; retain recvfrom's source metadata so the
+    /// actors can validate reply ownership without platform-specific code.
+    private static func receiveDatagram(_ fd: Int32) -> SocketDatagram? {
         var buffer = [UInt8](repeating: 0, count: 65_535)
-        let count = recv(fd, &buffer, buffer.count, 0)
+        var address = sockaddr_in()
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let count = withUnsafeMutablePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                recvfrom(fd, &buffer, buffer.count, 0, $0, &length)
+            }
+        }
         let receivedAt = MonotonicTimestamp.now()
         guard count > 0 else { return nil }
         buffer.removeLast(buffer.count - count)
-        return (buffer, receivedAt)
+        let source: IPAddress? = address.sin_family == sa_family_t(AF_INET)
+            && Int(length) >= MemoryLayout<sockaddr_in>.size
+            ? .ipv4(IPv4Endpoint(rawAddress: address.sin_addr.s_addr)) : nil
+        return SocketDatagram(bytes: buffer, receivedAt: receivedAt, source: source)
     }
     #endif
 }

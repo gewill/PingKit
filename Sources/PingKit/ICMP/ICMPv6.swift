@@ -24,6 +24,10 @@ public enum ICMPv6 {
     /// Parses a bare ICMPv6 message. Checksum validation is delegated to the
     /// kernel because it requires the IPv6 pseudo-header.
     public static func parseMessage(_ bytes: ArraySlice<UInt8>) throws -> ICMPv6Message {
+        try parseMessage(bytes, expectedDestination: nil)
+    }
+
+    static func parseMessage(_ bytes: ArraySlice<UInt8>, expectedDestination: IPv6Endpoint?) throws -> ICMPv6Message {
         guard bytes.count >= headerSize else { throw PacketParseError.truncated }
         let base = bytes.startIndex
         let type = bytes[base]
@@ -49,16 +53,16 @@ public enum ICMPv6 {
         case echoRequestType:
             return .echoRequest(identifier: bigEndian16(at: 4), sequence: bigEndian16(at: 6))
         case destinationUnreachableType:
-            return .destinationUnreachable(code: code, probe: parseEmbeddedProbe(bytes[(base + headerSize)...]))
+            return .destinationUnreachable(code: code, probe: parseEmbeddedProbe(bytes[(base + headerSize)...], expectedDestination: expectedDestination))
         case packetTooBigType:
-            return .packetTooBig(mtu: bigEndian32(at: 4), probe: parseEmbeddedProbe(bytes[(base + headerSize)...]))
+            return .packetTooBig(mtu: bigEndian32(at: 4), probe: parseEmbeddedProbe(bytes[(base + headerSize)...], expectedDestination: expectedDestination))
         case timeExceededType:
-            return .timeExceeded(code: code, probe: parseEmbeddedProbe(bytes[(base + headerSize)...]))
+            return .timeExceeded(code: code, probe: parseEmbeddedProbe(bytes[(base + headerSize)...], expectedDestination: expectedDestination))
         case parameterProblemType:
             return .parameterProblem(
                 code: code,
                 pointer: bigEndian32(at: 4),
-                probe: parseEmbeddedProbe(bytes[(base + headerSize)...]))
+                probe: parseEmbeddedProbe(bytes[(base + headerSize)...], expectedDestination: expectedDestination))
         default:
             return .other(type: type, code: code)
         }
@@ -66,10 +70,14 @@ public enum ICMPv6 {
 
     /// Our outgoing packets have no IPv6 extension headers, so a quoted
     /// packet must contain the 40-byte IPv6 base header followed by ICMPv6.
-    static func parseEmbeddedProbe(_ bytes: ArraySlice<UInt8>) -> EmbeddedProbe? {
+    static func parseEmbeddedProbe(_ bytes: ArraySlice<UInt8>, expectedDestination: IPv6Endpoint? = nil) -> EmbeddedProbe? {
         guard bytes.count >= 40 + headerSize else { return nil }
         let base = bytes.startIndex
         guard bytes[base] >> 4 == 6, bytes[base + 6] == 58 else { return nil }
+        // Scope IDs are local interface metadata, not part of the quoted
+        // IPv6 header. Compare the 128-bit destination on the wire.
+        if let expectedDestination,
+           !bytes[(base + 24)..<(base + 40)].elementsEqual(expectedDestination.bytes) { return nil }
         let icmp = bytes[(base + 40)...]
         guard icmp[icmp.startIndex] == echoRequestType else { return nil }
         let messageBase = icmp.startIndex
