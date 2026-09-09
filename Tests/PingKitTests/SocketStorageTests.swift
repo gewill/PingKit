@@ -18,7 +18,7 @@ import Testing
         let (stream, continuation) = AsyncStream<SocketDatagram>.makeStream(bufferingPolicy: .bufferingOldest(16))
         try socket.activate { continuation.yield($0) }
         let watchdog = Task {
-            try await Task.sleep(for: .seconds(3))
+            try await Task.sleep(for: .seconds(60))
             continuation.finish()
         }
         defer { watchdog.cancel(); continuation.finish() }

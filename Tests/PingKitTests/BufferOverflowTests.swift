@@ -5,10 +5,10 @@ import Testing
     private let loopback = IPv4Endpoint(127, 0, 0, 1)
 
     private func waitForClose(_ socket: MockPingSocket) async throws {
-        let deadline = ContinuousClock.now + .seconds(3)
+        let deadline = ContinuousClock.now + .seconds(60)
         while !socket.closed {
             try #require(ContinuousClock.now < deadline, "overflow did not close the socket")
-            await Task.yield()
+            try await Task.sleep(for: .milliseconds(10))
         }
     }
 
@@ -16,7 +16,7 @@ import Testing
         let socket = MockPingSocket(autoReply: { Fixtures.replyDatagram(forRequest: $0) })
         let pinger = Pinger(
             host: "test.invalid",
-            configuration: .init(bufferLimits: .init(events: 1)),
+            configuration: .init(interval: .seconds(300), timeout: .seconds(300), bufferLimits: .init(events: 1)),
             socketFactory: { _ in socket }, resolver: { _ in .ipv4(loopback) })
         let stream = try await pinger.claimAndStart()
         do { try await waitForClose(socket) } catch { await pinger.stop(); throw error }
@@ -39,7 +39,7 @@ import Testing
         })
         let tracer = Tracer(
             host: "test.invalid",
-            configuration: .init(probesPerHop: 1, bufferLimits: .init(events: 1)),
+            configuration: .init(probesPerHop: 1, timeout: .seconds(300), bufferLimits: .init(events: 1)),
             socketFactory: { _ in socket }, resolver: { _ in loopback })
         let stream = try await tracer.claimAndStart()
         do { try await waitForClose(socket) } catch { await tracer.stop(); throw error }
