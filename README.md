@@ -43,9 +43,8 @@ The `PingKit` library target has no runtime dependencies. The `pingkit`
 executable uses Apple's `swift-argument-parser`; the DocC plugin is used only
 for documentation builds.
 
-The repository is currently private. Consumers need GitHub credentials with
-repository access for Swift Package Manager to resolve this URL. Public Swift
-Package Index distribution requires making the repository public first.
+The repository is public; Swift Package Manager can resolve this URL without
+GitHub credentials.
 
 > **Stability**: 0.x releases follow SemVer, but the public API may still
 > change between minor versions until 1.0.
