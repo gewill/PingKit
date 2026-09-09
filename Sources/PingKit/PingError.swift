@@ -7,7 +7,8 @@ import Glibc
 /// Errors thrown by a ping or traceroute run.
 ///
 /// Setup failures — configuration, resolution, socket creation and options,
-/// and a rejected second consumer — surface here for every run. Per-probe
+/// and a rejected second consumer — surface here for every run. A run also
+/// throws if a local buffer overflows. Per-probe
 /// network outcomes do not: a continuous run reports those as
 /// ``PingResponse`` events, and only the one-shot
 /// ``Pinger/ping(_:timeout:payloadSize:addressFamily:)`` converts them into

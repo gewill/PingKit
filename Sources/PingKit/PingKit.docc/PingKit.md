@@ -52,6 +52,7 @@ socket deterministically.
 - <doc:PlatformNotes>
 - ``Pinger``
 - ``PingConfiguration``
+- ``PingBufferLimits``
 - ``PingResponses``
 
 ### Results
