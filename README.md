@@ -162,6 +162,8 @@ itself is `pingkit`, so install it as
 
 In ping mode `-4` / `-6` force the address family and `-m` sets the outgoing
 TTL or hop limit; in trace mode `-m` sets the maximum hop count.
+Time options accept positive finite seconds up to 2,147,483,647; values
+that round to zero at `Duration` precision are rejected.
 
 Prints `ping(8)`-style output including the closing statistics block
 (`traceroute(8)`-style in trace mode); Ctrl-C stops an unlimited run and

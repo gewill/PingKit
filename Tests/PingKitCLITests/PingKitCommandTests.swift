@@ -4,6 +4,23 @@ import Testing
 @testable import PingKitCLI
 
 @Suite struct PingKitCommandTests {
+    @Test(arguments: ["nan", "inf", "-inf", "1e100", "0", "-1", "2147483648", "1e-100"])
+    func rejectsUnsafeSeconds(value: String) {
+        for option in ["--interval", "--timeout"] {
+            #expect(throws: (any Error).self) {
+                try Ping.parse(["127.0.0.1", "\(option)=\(value)"])
+            }
+        }
+        #expect(throws: (any Error).self) {
+            try Trace.parse(["127.0.0.1", "--timeout=\(value)"])
+        }
+    }
+
+    @Test func acceptsSafeSecondsBoundary() throws {
+        let command = try Ping.parse(["127.0.0.1", "--interval=2147483647"])
+        #expect(Duration.seconds(command.interval) == .seconds(Int32.max))
+    }
+
     @Test func parsesPingOptions() throws {
         let command = try Ping.parse([
             "example.com", "-6", "-c", "5", "-i", "0.25",
