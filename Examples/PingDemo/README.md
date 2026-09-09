@@ -1,5 +1,10 @@
 # PingDemo
 
+The list retains the latest 500 rows, newest first. Pending rows update in
+place while retained. If a row has been evicted, a later terminal event
+appears as a new row; stopping updates only pending rows still displayed.
+Starting a new run clears both history and pending references.
+
 Minimal SwiftUI app for exercising PingKit on iOS devices. The Xcode project
 is generated with [XcodeGen](https://github.com/yonaskolb/XcodeGen) and not
 checked in:

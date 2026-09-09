@@ -11,6 +11,8 @@ struct ContentView: View {
     @State private var pingTask: Task<Void, Never>?
 
     private var isRunning: Bool { pingTask != nil }
+    /// Bound both memory and the work to locate/update a pending row.
+    private static let historyLimit = 500
 
     /// Dual-stack hosts (A + AAAA records) handy for exercising IPv6 and
     /// NAT64 resolution.
@@ -181,6 +183,11 @@ struct ContentView: View {
     /// Newest entries go on top so a long run never needs manual scrolling.
     private func prepend(_ line: Line) {
         lines.insert(line, at: 0)
+        if lines.count > Self.historyLimit {
+            lines.removeLast(lines.count - Self.historyLimit)
+            let retainedIDs = Set(lines.map(\.id))
+            pending = pending.filter { retainedIDs.contains($0.value) }
+        }
     }
 
     private static func format(_ stats: PingStatistics) -> String {
