@@ -33,6 +33,9 @@ public actor Pinger {
     private let configuration: PingConfiguration
     private let socketFactory: SocketFactory
     private let resolver: HostResolver
+    // A smaller sequence space lets tests exercise the actual wraparound
+    // state machine without sending 65,536 probes.
+    private let sequenceLimit: UInt16
     private let identifier = UInt16.random(in: 1 ... .max)
 
     private var state: State = .idle
@@ -44,6 +47,8 @@ public actor Pinger {
     private var receiveTask: Task<Void, Never>?
     private var receiveContinuation: AsyncStream<SocketDatagram>.Continuation?
     private var pending: [UInt16: Probe] = [:]
+    private(set) var waitingSequence: UInt16?
+    private var sequenceWaiter: CheckedContinuation<Void, Never>?
 
     private var transmitted = 0
     private var received = 0
@@ -54,6 +59,7 @@ public actor Pinger {
     private var maxRTT: Duration?
 
     private struct Probe {
+        let generation: Int
         let sentAt: MonotonicTimestamp
         let timeoutTask: Task<Void, Never>
     }
@@ -81,12 +87,14 @@ public actor Pinger {
         host: String,
         configuration: PingConfiguration,
         socketFactory: @escaping SocketFactory,
-        resolver: @escaping HostResolver
+        resolver: @escaping HostResolver,
+        sequenceLimit: UInt16 = .max
     ) {
         self.host = host
         self.configuration = configuration
         self.socketFactory = socketFactory
         self.resolver = resolver
+        self.sequenceLimit = sequenceLimit
     }
 
     deinit {
@@ -231,6 +239,7 @@ public actor Pinger {
     private func startSendLoop() {
         let count = configuration.count
         let interval = configuration.interval
+        let sequenceLimit = self.sequenceLimit
         sendTask = Task { [weak self] in
             var sequence: UInt16 = 0
             var sent = 0
@@ -243,7 +252,7 @@ public actor Pinger {
                 }
                 guard proceeded else { return }
                 sent += 1
-                sequence &+= 1
+                sequence = sequence == sequenceLimit ? 0 : sequence + 1
                 if case .times(let n) = count, sent >= n { return }
                 do {
                     try await Task.sleep(for: interval)
@@ -254,8 +263,18 @@ public actor Pinger {
         }
     }
 
-    private func sendProbe(sequence: UInt16) -> Bool {
-        guard case .running = state, let endpoint, let socket, let continuation else { return false }
+    private func sendProbe(sequence: UInt16) async -> Bool {
+        guard case .running = state else { return false }
+        if pending[sequence] != nil {
+            // There is only one send loop. Keep its next wire sequence in
+            // order and wait rather than overwriting an unanswered probe.
+            await withCheckedContinuation { waiter in
+                waitingSequence = sequence
+                sequenceWaiter = waiter
+            }
+        }
+        guard case .running = state, !Task.isCancelled,
+              let endpoint, let socket, let continuation else { return false }
         let payload = ICMPv4.payloadPattern(size: configuration.payloadSize)
         let packet: [UInt8]
         switch endpoint {
@@ -289,12 +308,13 @@ public actor Pinger {
         transmitted += 1
         continuation.yield(.sent(sequence: sequence))
         let timeout = configuration.timeout
+        let generation = transmitted
         let timeoutTask = Task { [weak self] in
             try? await Task.sleep(for: timeout)
             guard !Task.isCancelled else { return }
-            await self?.handleTimeout(sequence: sequence)
+            await self?.handleTimeout(sequence: sequence, generation: generation)
         }
-        pending[sequence] = Probe(sentAt: sentAt, timeoutTask: timeoutTask)
+        pending[sequence] = Probe(generation: generation, sentAt: sentAt, timeoutTask: timeoutTask)
         return true
     }
 
@@ -378,8 +398,7 @@ public actor Pinger {
         #else
         _ = replyIdentifier
         #endif
-        guard let probe = pending.removeValue(forKey: sequence) else { return }
-        probe.timeoutTask.cancel()
+        guard let probe = takeProbe(sequence: sequence) else { return }
         let rtt = receivedAt.duration(since: probe.sentAt)
         recordRTT(rtt)
         continuation?.yield(.reply(PingReply(
@@ -396,17 +415,31 @@ public actor Pinger {
         response: (UInt16) -> PingResponse
     ) {
         guard let probeReference, probeMatches(probeReference),
-              let probe = pending.removeValue(forKey: probeReference.sequence) else { return }
-        probe.timeoutTask.cancel()
+              takeProbe(sequence: probeReference.sequence) != nil else { return }
         continuation?.yield(response(probeReference.sequence))
         completeProbe()
     }
 
-    private func handleTimeout(sequence: UInt16) {
+    func handleTimeout(sequence: UInt16, generation: Int) {
         guard case .running = state else { return }
-        guard pending.removeValue(forKey: sequence) != nil else { return }
+        guard pending[sequence]?.generation == generation,
+              takeProbe(sequence: sequence) != nil else { return }
         continuation?.yield(.timeout(sequence: sequence))
         completeProbe()
+    }
+
+    private func takeProbe(sequence: UInt16) -> Probe? {
+        guard let probe = pending.removeValue(forKey: sequence) else { return nil }
+        probe.timeoutTask.cancel()
+        if waitingSequence == sequence { resumeSequenceWaiter() }
+        return probe
+    }
+
+    private func resumeSequenceWaiter() {
+        let waiter = sequenceWaiter
+        sequenceWaiter = nil
+        waitingSequence = nil
+        waiter?.resume()
     }
 
     private func probeMatches(_ probe: EmbeddedProbe) -> Bool {
@@ -438,6 +471,7 @@ public actor Pinger {
         state = .stopped
         sendTask?.cancel()
         sendTask = nil
+        resumeSequenceWaiter()
         receiveContinuation?.finish()
         receiveContinuation = nil
         receiveTask?.cancel()
