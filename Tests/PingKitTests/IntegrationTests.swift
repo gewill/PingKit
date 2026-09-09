@@ -7,59 +7,6 @@ import Darwin
 import Glibc
 #endif
 
-/// Probes whether this environment can actually create an unprivileged ICMP
-/// socket and send to loopback. Sandboxed CI runners often can't; those get a
-/// skip rather than a spurious failure.
-let icmpLoopbackAvailable: Bool = {
-    #if canImport(Darwin)
-    let fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
-    #else
-    let fd = socket(AF_INET, Int32(SOCK_DGRAM.rawValue), Int32(IPPROTO_ICMP))
-    #endif
-    guard fd >= 0 else { return false }
-    defer { close(fd) }
-
-    var address = sockaddr_in()
-    #if canImport(Darwin)
-    address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-    #endif
-    address.sin_family = sa_family_t(AF_INET)
-    address.sin_addr = in_addr(s_addr: IPv4Endpoint(127, 0, 0, 1).rawAddress)
-    let probe = ICMPv4.makeEchoRequest(identifier: 1, sequence: 0, payload: [])
-    let sent = withUnsafePointer(to: &address) { pointer in
-        pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { socketAddress in
-            sendto(fd, probe, probe.count, 0, socketAddress, socklen_t(MemoryLayout<sockaddr_in>.size))
-        }
-    }
-    return sent == probe.count
-}()
-
-let icmpv6LoopbackAvailable: Bool = {
-    #if canImport(Darwin)
-    let fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_ICMPV6)
-    #else
-    let fd = socket(AF_INET6, Int32(SOCK_DGRAM.rawValue), Int32(IPPROTO_ICMPV6))
-    #endif
-    guard fd >= 0 else { return false }
-    defer { close(fd) }
-
-    var address = sockaddr_in6()
-    #if canImport(Darwin)
-    address.sin6_len = UInt8(MemoryLayout<sockaddr_in6>.size)
-    #endif
-    address.sin6_family = sa_family_t(AF_INET6)
-    withUnsafeMutableBytes(of: &address.sin6_addr) { bytes in
-        bytes[15] = 1
-    }
-    let probe = ICMPv6.makeEchoRequest(identifier: 1, sequence: 0, payload: [])
-    let sent = withUnsafePointer(to: &address) { pointer in
-        pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { socketAddress in
-            sendto(fd, probe, probe.count, 0, socketAddress, socklen_t(MemoryLayout<sockaddr_in6>.size))
-        }
-    }
-    return sent == probe.count
-}()
-
 @Suite struct IntegrationTests {
     @Test(.enabled(if: icmpLoopbackAvailable, "ICMP datagram sockets are unavailable in this environment"))
     func oneShotPingLoopback() async throws {

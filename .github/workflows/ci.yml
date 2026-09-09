@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  PINGKIT_REQUIRE_ICMP: "1"
+
 jobs:
   macos:
     name: macOS
@@ -29,6 +32,10 @@ jobs:
       - name: Build for iOS device target
         run: xcodebuild -scheme PingKit -destination 'generic/platform=iOS' build CODE_SIGNING_ALLOWED=NO
       - name: Test on iOS Simulator
+        env:
+          # xcodebuild forwards TEST_RUNNER_* to the test process without
+          # the prefix; ordinary host variables do not cross this boundary.
+          TEST_RUNNER_PINGKIT_REQUIRE_ICMP: "1"
         # PingKit-LibraryTests is a shared scheme (.swiftpm/xcode) holding
         # only the library and its tests; the pingkit-cli executable target
         # can't join an iOS test build graph.
@@ -54,7 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Enable unprivileged ICMP sockets
-        run: sysctl -w net.ipv4.ping_group_range="0 2147483647" || echo "sysctl unavailable; integration tests will be skipped"
+        run: sysctl -w net.ipv4.ping_group_range="0 2147483647"
       - name: Swift version
         run: swift --version
       - name: Build
