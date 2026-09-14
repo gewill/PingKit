@@ -19,6 +19,12 @@ behavior below — address families and NAT64, iOS permissions and
 backgrounding, Linux kernel settings — is also written up as a DocC
 article: [Platform Notes](Sources/PingKit/PingKit.docc/PlatformNotes.md).
 
+## Swift Package Index
+
+Find PingKit on [Swift Package Index (SPI)](https://swiftpackageindex.com/gewill/PingKit)
+for releases, Swift and platform compatibility results, and hosted API
+documentation.
+
 ## Requirements
 
 - Swift 6.0+, macOS 13+ / iOS 16+

@@ -109,7 +109,7 @@ Ping/
      - Linux：ubuntu runner + Swift 6 工具链；先 `sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"` 打开免特权 ICMP，再 `swift test`。这样 Linux 从"best-effort 未编译验证"直接升级为 CI 持续验证。
      - Glibc 分支已在 CI 编译并测试，覆盖 `SOCK_DGRAM` 枚举和常量类型差异。
    - 顺手加 LICENSE（MIT）和 README badge。
-6. ✅ **M6 首次发布**（`0.1.0` 与 GitHub Release 已发布；DocC catalog 本地构建通过；`.spi.yml` 就绪。当前最新版本为 `0.6.2`。仓库已转 public，SPI 提交为 SwiftPackageIndex/PackageList#15025 —— SPI 侧新包 ingestion 暂停中，请求排队等待处理）
+6. ✅ **M6 首次发布**（`0.1.0` 与 GitHub Release 已发布；DocC catalog 本地构建通过；`.spi.yml` 就绪。当前最新版本为 `0.7.0`。仓库已转 public，[Swift Package Index](https://swiftpackageindex.com/gewill/PingKit) 已收录，提供兼容性构建结果和在线 API 文档；2026-09-14 核实）
 7. ✅ **M7 iOS 验证**
    - ✅ CI 加 iOS 门禁：`generic/platform=iOS` 设备目标编译 + iOS 模拟器全量测试（含 loopback 集成测试，证明 ICMP dgram socket 在 iOS 运行时可用）。
    - ✅ 最小 SwiftUI demo App（`Examples/PingDemo`，xcodegen 生成工程，含 `NSLocalNetworkUsageDescription`），模拟器构建通过。
