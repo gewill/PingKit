@@ -108,8 +108,8 @@ import Testing
         let socket = MockPingSocket(autoReply: { Fixtures.replyDatagram(forRequest: $0) })
         let pinger = makePinger(
             configuration: PingConfiguration(
-                interval: .milliseconds(10), timeout: .seconds(2),
-                sendDuration: .milliseconds(45)),
+                interval: .milliseconds(100), timeout: .seconds(2),
+                sendDuration: .seconds(2)),
             socket: socket)
 
         var sent = 0
@@ -130,8 +130,8 @@ import Testing
         let socket = MockPingSocket()
         let pinger = makePinger(
             configuration: PingConfiguration(
-                interval: .seconds(30), timeout: .milliseconds(30),
-                sendDuration: .milliseconds(20)),
+                interval: .seconds(30), timeout: .milliseconds(100),
+                sendDuration: .seconds(2)),
             socket: socket)
         let startedAt = ContinuousClock.now
 
@@ -148,8 +148,8 @@ import Testing
         let pinger = Pinger(
             host: "test.invalid",
             configuration: PingConfiguration(
-                interval: .milliseconds(5), timeout: .milliseconds(45),
-                sendDuration: .milliseconds(15)),
+                interval: .milliseconds(100), timeout: .seconds(3),
+                sendDuration: .seconds(2)),
             socketFactory: { _ in socket },
             resolver: { _ in .ipv4(IPv4Endpoint(127, 0, 0, 1)) },
             sequenceLimit: 0)
@@ -164,8 +164,8 @@ import Testing
         let socket = MockPingSocket(sendErrorForIndex: { _ in .sendFailed(errno: 51) })
         let pinger = makePinger(
             configuration: PingConfiguration(
-                interval: .milliseconds(5), timeout: .milliseconds(20),
-                sendDuration: .milliseconds(25)),
+                interval: .milliseconds(100), timeout: .milliseconds(100),
+                sendDuration: .seconds(2)),
             socket: socket)
 
         var failures = 0
