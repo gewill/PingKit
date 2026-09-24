@@ -257,8 +257,6 @@ public actor Pinger {
         let count = configuration.count
         let interval = configuration.interval
         let sequenceLimit = self.sequenceLimit
-        let startedAt = ContinuousClock.now
-        sendStartedAt = startedAt
         sendTask = Task { [weak self] in
             var sequence: UInt16 = 0
             var sent = 0
@@ -277,6 +275,12 @@ public actor Pinger {
             }
             await self?.sendingDidFinish()
         }
+    }
+
+    private func beginSendingWindowIfNeeded() {
+        guard sendStartedAt == nil else { return }
+        let startedAt = ContinuousClock.now
+        sendStartedAt = startedAt
         if let duration = configuration.sendDuration {
             let deadline = startedAt.advanced(by: duration)
             sendWindowTask = Task { [weak self] in
@@ -316,8 +320,11 @@ public actor Pinger {
             }
         }
         guard case .running = state, !Task.isCancelled,
-              !sendingWindowElapsed,
               let endpoint, let socket else { return false }
+        // Actor/scheduler startup may be delayed after socket activation.
+        // The finite window begins at the first actual send opportunity.
+        beginSendingWindowIfNeeded()
+        guard !sendingWindowElapsed else { return false }
         let payload = ICMPv4.payloadPattern(size: configuration.payloadSize)
         let packet: [UInt8]
         switch endpoint {
