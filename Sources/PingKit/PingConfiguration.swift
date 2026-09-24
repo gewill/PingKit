@@ -22,6 +22,11 @@ public struct PingConfiguration: Sendable {
     public var timeout: Duration
     /// How many probes to send before the response sequence finishes.
     public var count: Count
+    /// Optional finite sending window, measured with a monotonic clock from
+    /// the start of the send loop. Once elapsed, no new probes are sent; the
+    /// sequence remains open until previously sent probes reply or time out.
+    /// `nil` preserves the usual count/unlimited behavior.
+    public var sendDuration: Duration?
     /// Echo payload size in bytes (the classic default is 56, for 64-byte
     /// ICMP messages).
     public var payloadSize: Int
@@ -37,6 +42,7 @@ public struct PingConfiguration: Sendable {
         interval: Duration = .seconds(1),
         timeout: Duration = .seconds(2),
         count: Count = .unlimited,
+        sendDuration: Duration? = nil,
         payloadSize: Int = 56,
         timeToLive: Int? = nil,
         addressFamily: AddressFamily = .automatic,
@@ -45,6 +51,7 @@ public struct PingConfiguration: Sendable {
         self.interval = interval
         self.timeout = timeout
         self.count = count
+        self.sendDuration = sendDuration
         self.payloadSize = payloadSize
         self.timeToLive = timeToLive
         self.addressFamily = addressFamily
@@ -55,6 +62,7 @@ public struct PingConfiguration: Sendable {
         guard bufferLimits.isValid,
               interval > .zero,
               timeout > .zero,
+              sendDuration.map({ $0 > .zero }) ?? true,
               payloadSize >= 0,
               payloadSize <= 65_507,
               count.isValid,

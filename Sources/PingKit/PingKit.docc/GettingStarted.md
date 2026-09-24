@@ -81,6 +81,7 @@ PingConfiguration(
     interval: .seconds(1),       // delay between probes
     timeout: .seconds(2),        // per-probe reply deadline
     count: .times(5),            // or .unlimited
+    sendDuration: nil,           // optional finite monotonic sending window
     payloadSize: 56,             // classic default: 64-byte ICMP messages
     timeToLive: 64,              // nil keeps the system default
     addressFamily: .automatic)   // or .ipv4 / .ipv6
@@ -89,6 +90,14 @@ PingConfiguration(
 `.automatic` follows `getaddrinfo` ordering, so a hostname resolves the way
 the rest of the system resolves it. An invalid combination throws
 ``PingError/invalidConfiguration`` when the run starts.
+
+For a time-bounded run, use `count: .unlimited` with `sendDuration`. The
+window starts when the send loop starts, after resolution and socket setup.
+At its monotonic deadline PingKit sends no new probe, even if a suspended send
+loop resumes late. The sequence then remains open only while previously sent
+probes reply or reach their configured `timeout`; this is not extra sampling
+time. `stop()` and consumer cancellation still close immediately, leaving any
+unsettled probes for the caller to report as unknown.
 
 ## Lifecycle
 

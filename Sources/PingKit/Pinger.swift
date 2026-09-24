@@ -48,6 +48,9 @@ public actor Pinger {
     private var socket: (any PingSocket)?
     private var continuation: AsyncThrowingStream<PingResponse, any Error>.Continuation?
     private var sendTask: Task<Void, Never>?
+    private var sendWindowTask: Task<Void, Never>?
+    private var sendStartedAt: ContinuousClock.Instant?
+    private var sendingFinished = false
     private var receiveTask: Task<Void, Never>?
     private var receiveContinuation: AsyncStream<SocketDatagram>.Continuation?
     private var pending: [UInt16: Probe] = [:]
@@ -254,27 +257,52 @@ public actor Pinger {
         let count = configuration.count
         let interval = configuration.interval
         let sequenceLimit = self.sequenceLimit
+        let startedAt = ContinuousClock.now
+        sendStartedAt = startedAt
         sendTask = Task { [weak self] in
             var sequence: UInt16 = 0
             var sent = 0
             while !Task.isCancelled {
-                let proceeded: Bool
-                if let self {
-                    proceeded = await self.sendProbe(sequence: sequence)
-                } else {
-                    return
-                }
-                guard proceeded else { return }
+                guard let self else { return }
+                let proceeded = await self.sendProbe(sequence: sequence)
+                guard proceeded else { break }
                 sent += 1
                 sequence = sequence == sequenceLimit ? 0 : sequence + 1
-                if case .times(let n) = count, sent >= n { return }
+                if case .times(let n) = count, sent >= n { break }
                 do {
                     try await Task.sleep(for: interval)
                 } catch {
-                    return
+                    break
                 }
             }
+            await self?.sendingDidFinish()
         }
+        if let duration = configuration.sendDuration {
+            let deadline = startedAt.advanced(by: duration)
+            sendWindowTask = Task { [weak self] in
+                do {
+                    try await ContinuousClock().sleep(until: deadline)
+                } catch {
+                    return
+                }
+                await self?.sendingDidFinish()
+            }
+        }
+    }
+
+    private func sendingDidFinish() {
+        guard case .running = state, !sendingFinished else { return }
+        sendingFinished = true
+        sendTask?.cancel()
+        sendTask = nil
+        sendWindowTask?.cancel()
+        sendWindowTask = nil
+        if pending.isEmpty { stopInternal() }
+    }
+
+    private var sendingWindowElapsed: Bool {
+        guard let duration = configuration.sendDuration, let sendStartedAt else { return false }
+        return sendStartedAt.duration(to: .now) >= duration
     }
 
     private func sendProbe(sequence: UInt16) async -> Bool {
@@ -288,6 +316,7 @@ public actor Pinger {
             }
         }
         guard case .running = state, !Task.isCancelled,
+              !sendingWindowElapsed,
               let endpoint, let socket else { return false }
         let payload = ICMPv4.payloadPattern(size: configuration.payloadSize)
         let packet: [UInt8]
@@ -297,6 +326,7 @@ public actor Pinger {
         case .ipv6:
             packet = ICMPv6.makeEchoRequest(identifier: identifier, sequence: sequence, payload: payload)
         }
+        guard !sendingWindowElapsed else { return false }
         let sentAt = MonotonicTimestamp.now()
         do {
             try socket.send(packet)
@@ -480,6 +510,8 @@ public actor Pinger {
         completed += 1
         if case .times(let n) = configuration.count, completed >= n {
             stopInternal()
+        } else if sendingFinished && pending.isEmpty {
+            stopInternal()
         }
     }
 
@@ -508,6 +540,8 @@ public actor Pinger {
         state = .stopped
         sendTask?.cancel()
         sendTask = nil
+        sendWindowTask?.cancel()
+        sendWindowTask = nil
         resumeSequenceWaiter()
         receiveContinuation?.finish()
         receiveContinuation = nil

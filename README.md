@@ -72,6 +72,7 @@ let pinger = Pinger(host: "1.1.1.1", configuration: .init(
     interval: .seconds(1),
     timeout: .seconds(2),
     count: .times(5),
+    sendDuration: nil,    // use .seconds(300) for a finite sending window
     payloadSize: 56,
     timeToLive: nil,       // IPv4 TTL / IPv6 hop limit
     addressFamily: .automatic)) // follows system DNS ordering, including DNS64
@@ -114,6 +115,9 @@ Lifecycle rules:
 - Cancelling the consuming task stops the pinger and closes the socket.
 - If you `break` out of the loop without cancelling, call `await pinger.stop()`
   (idempotent) to release the socket deterministically.
+- `sendDuration` stops new sends at a monotonic deadline, then lets already
+  sent probes reply or time out. It does not extend sampling; explicit stop or
+  cancellation still closes immediately.
 
 ## IPv6 and NAT64
 

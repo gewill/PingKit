@@ -5,6 +5,7 @@ import Testing
     @Test(arguments: [
         PingConfiguration(interval: .zero),
         PingConfiguration(timeout: .zero),
+        PingConfiguration(sendDuration: .zero),
         PingConfiguration(count: .times(0)),
         PingConfiguration(payloadSize: -1),
         PingConfiguration(payloadSize: 65_508),
@@ -78,6 +79,124 @@ import Testing
         }
 
         #expect(events == [.sent(sequence: 0), .timeout(sequence: 0)])
+    }
+
+    @Test func sendWindowDrainsPreviouslySentTimeouts() async throws {
+        let socket = MockPingSocket()
+        let pinger = makePinger(
+            configuration: PingConfiguration(
+                interval: .milliseconds(10), timeout: .milliseconds(25),
+                sendDuration: .milliseconds(45)),
+            socket: socket)
+
+        var sent = 0
+        var timedOut = 0
+        for try await event in pinger.responses {
+            switch event {
+            case .sent: sent += 1
+            case .timeout: timedOut += 1
+            default: Issue.record("Unexpected event: \(event)")
+            }
+        }
+        #expect(sent > 0)
+        #expect(sent == timedOut)
+        #expect(socket.sent.count == sent)
+        #expect(socket.closed)
+    }
+
+    @Test func sendWindowCompletesAfterFastReplies() async throws {
+        let socket = MockPingSocket(autoReply: { Fixtures.replyDatagram(forRequest: $0) })
+        let pinger = makePinger(
+            configuration: PingConfiguration(
+                interval: .milliseconds(10), timeout: .seconds(2),
+                sendDuration: .milliseconds(45)),
+            socket: socket)
+
+        var sent = 0
+        var replied = 0
+        for try await event in pinger.responses {
+            switch event {
+            case .sent: sent += 1
+            case .reply: replied += 1
+            default: Issue.record("Unexpected event: \(event)")
+            }
+        }
+        #expect(sent > 0)
+        #expect(replied == sent)
+        #expect(socket.closed)
+    }
+
+    @Test func sendWindowEndsWithoutWaitingForTheNextLongInterval() async throws {
+        let socket = MockPingSocket()
+        let pinger = makePinger(
+            configuration: PingConfiguration(
+                interval: .seconds(30), timeout: .milliseconds(30),
+                sendDuration: .milliseconds(20)),
+            socket: socket)
+        let startedAt = ContinuousClock.now
+
+        var events: [PingResponse] = []
+        for try await event in pinger.responses { events.append(event) }
+
+        #expect(events == [.sent(sequence: 0), .timeout(sequence: 0)])
+        #expect(startedAt.duration(to: .now) < .seconds(10))
+        #expect(socket.sent.count == 1)
+    }
+
+    @Test func sendWindowIsCheckedAgainAfterWaitingForWrappedSequence() async throws {
+        let socket = MockPingSocket()
+        let pinger = Pinger(
+            host: "test.invalid",
+            configuration: PingConfiguration(
+                interval: .milliseconds(5), timeout: .milliseconds(45),
+                sendDuration: .milliseconds(15)),
+            socketFactory: { _ in socket },
+            resolver: { _ in .ipv4(IPv4Endpoint(127, 0, 0, 1)) },
+            sequenceLimit: 0)
+
+        var events: [PingResponse] = []
+        for try await event in pinger.responses { events.append(event) }
+        #expect(events == [.sent(sequence: 0), .timeout(sequence: 0)])
+        #expect(socket.sent.count == 1)
+    }
+
+    @Test func sendFailuresStillAdvanceAFiniteSendingWindow() async throws {
+        let socket = MockPingSocket(sendErrorForIndex: { _ in .sendFailed(errno: 51) })
+        let pinger = makePinger(
+            configuration: PingConfiguration(
+                interval: .milliseconds(5), timeout: .milliseconds(20),
+                sendDuration: .milliseconds(25)),
+            socket: socket)
+
+        var failures = 0
+        for try await event in pinger.responses {
+            guard case .sendFailed = event else {
+                Issue.record("Unexpected event: \(event)")
+                continue
+            }
+            failures += 1
+        }
+        #expect(failures > 0)
+        #expect(socket.sent.isEmpty)
+        #expect(socket.closed)
+    }
+
+    @Test func explicitStopDuringSendWindowDoesNotDrainPendingProbes() async throws {
+        let socket = MockPingSocket()
+        let pinger = makePinger(
+            configuration: PingConfiguration(
+                interval: .seconds(1), timeout: .seconds(1),
+                sendDuration: .seconds(10)),
+            socket: socket)
+        var iterator = pinger.responses.makeAsyncIterator()
+
+        let first = try await iterator.next()
+        #expect(first == .sent(sequence: 0))
+        await pinger.stop()
+        let afterStop = try await iterator.next()
+        #expect(afterStop == nil)
+        #expect(socket.closed)
+        #expect(socket.sent.count == 1)
     }
 
     @Test func ipv6ReplyIncludesSourceAndHopLimit() async throws {
