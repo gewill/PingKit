@@ -92,7 +92,7 @@ the rest of the system resolves it. An invalid combination throws
 ``PingError/invalidConfiguration`` when the run starts.
 
 For a time-bounded run, use `count: .unlimited` with `sendDuration`. The
-window starts when the send loop starts, after resolution and socket setup.
+window starts at the first send opportunity after resolution and socket setup.
 At its monotonic deadline PingKit sends no new probe, even if a suspended send
 loop resumes late. The sequence then remains open only while previously sent
 probes reply or reach their configured `timeout`; this is not extra sampling

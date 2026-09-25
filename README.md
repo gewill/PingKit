@@ -115,8 +115,9 @@ Lifecycle rules:
 - Cancelling the consuming task stops the pinger and closes the socket.
 - If you `break` out of the loop without cancelling, call `await pinger.stop()`
   (idempotent) to release the socket deterministically.
-- `sendDuration` stops new sends at a monotonic deadline, then lets already
-  sent probes reply or time out. It does not extend sampling; explicit stop or
+- `sendDuration` starts at the first send opportunity after socket setup,
+  stops new sends at a monotonic deadline, then lets probes already sent
+  reply or time out. It does not extend sampling; explicit stop or
   cancellation still closes immediately.
 
 ## IPv6 and NAT64
