@@ -98,8 +98,12 @@ for try await response in pinger.responses {
 }
 ```
 
-This is a userspace send-boundary measurement, not a kernel transmit or remote
-receive timestamp. It is unaffected by delayed `AsyncSequence` consumption.
+The `instant` also uses `ContinuousClock`, so it can be compared with a caller's
+session start to detect delay before the first attempt. That clock counts
+system sleep just like `sendDeadline`; RTT remains on PingKit's separate
+monotonic receive clock. This is a userspace send-boundary measurement, not a
+kernel transmit or remote receive timestamp. It is unaffected by delayed
+`AsyncSequence` consumption.
 
 ## Configure the Run
 

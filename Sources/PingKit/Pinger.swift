@@ -38,7 +38,6 @@ public actor Pinger {
     private let socketFactory: SocketFactory
     private let resolver: HostResolver
     private let clockNow: @Sendable () -> ContinuousClock.Instant
-    private let attemptClockNow: @Sendable () -> MonotonicTimestamp
     // A smaller sequence space lets tests exercise the actual wraparound
     // state machine without sending 65,536 probes.
     private let sequenceLimit: UInt16
@@ -60,7 +59,7 @@ public actor Pinger {
     private var sequenceWaiter: CheckedContinuation<Void, Never>?
 
     private var transmitted = 0
-    private var lastAttemptAt: MonotonicTimestamp?
+    private var lastAttemptInstant: ContinuousClock.Instant?
     private var attemptTimings: [Int: PingAttemptTiming] = [:]
     private var received = 0
     private var completed = 0
@@ -100,8 +99,7 @@ public actor Pinger {
         socketFactory: @escaping SocketFactory,
         resolver: @escaping HostResolver,
         sequenceLimit: UInt16 = .max,
-        clockNow: @escaping @Sendable () -> ContinuousClock.Instant = { .now },
-        attemptClockNow: @escaping @Sendable () -> MonotonicTimestamp = { .now() }
+        clockNow: @escaping @Sendable () -> ContinuousClock.Instant = { .now }
     ) {
         self.host = host
         self.configuration = configuration
@@ -109,7 +107,6 @@ public actor Pinger {
         self.resolver = resolver
         self.sequenceLimit = sequenceLimit
         self.clockNow = clockNow
-        self.attemptClockNow = attemptClockNow
     }
 
     deinit {
@@ -356,13 +353,14 @@ public actor Pinger {
             packet = ICMPv6.makeEchoRequest(identifier: identifier, sequence: sequence, payload: payload)
         }
         guard !sendingWindowElapsed else { return false }
-        let sentAt = attemptClockNow()
+        let attemptInstant = clockNow()
+        let sentAt = MonotonicTimestamp.now()
         let attemptNumber = transmitted + 1
-        let interval = lastAttemptAt.map { sentAt.duration(since: $0) }
+        let interval = lastAttemptInstant.map { $0.duration(to: attemptInstant) }
         attemptTimings[attemptNumber] = PingAttemptTiming(
-            attemptNumber: attemptNumber, sequence: sequence,
+            attemptNumber: attemptNumber, sequence: sequence, instant: attemptInstant,
             intervalSincePreviousAttempt: interval)
-        lastAttemptAt = sentAt
+        lastAttemptInstant = attemptInstant
         attemptTimings.removeValue(forKey: attemptNumber - configuration.bufferLimits.events)
         do {
             try socket.send(packet)

@@ -4,12 +4,13 @@ import Testing
 
 private final class SteppedAttemptClock: @unchecked Sendable {
     private let lock = NSLock()
+    private let start = ContinuousClock.now
     private var nextSecond: UInt64 = 10
 
-    func now() -> MonotonicTimestamp {
+    func now() -> ContinuousClock.Instant {
         lock.withLock {
             defer { nextSecond += 1 }
-            return MonotonicTimestamp(nanoseconds: nextSecond * 1_000_000_000)
+            return start.advanced(by: .seconds(Int64(nextSecond)))
         }
     }
 }
@@ -108,7 +109,7 @@ private final class SteppedAttemptClock: @unchecked Sendable {
                 interval: .milliseconds(5), timeout: .milliseconds(20), count: .times(3)),
             socketFactory: { _ in socket },
             resolver: { _ in .ipv4(IPv4Endpoint(127, 0, 0, 1)) },
-            attemptClockNow: { clock.now() })
+            clockNow: { clock.now() })
 
         var timings: [PingAttemptTiming] = []
         for try await response in pinger.responses {
@@ -141,7 +142,7 @@ private final class SteppedAttemptClock: @unchecked Sendable {
             socketFactory: { _ in socket },
             resolver: { _ in .ipv4(IPv4Endpoint(127, 0, 0, 1)) },
             sequenceLimit: 1,
-            attemptClockNow: { clock.now() })
+            clockNow: { clock.now() })
 
         for try await _ in pinger.responses {}
 

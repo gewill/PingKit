@@ -9,13 +9,19 @@ public struct PingAttemptTiming: Sendable, Equatable {
     public let attemptNumber: Int
     /// The 16-bit wire sequence. `attemptNumber` disambiguates wraparound.
     public let sequence: UInt16
+    /// Monotonic send-attempt boundary on the same `ContinuousClock` timeline
+    /// as ``PingConfiguration/sendDeadline``. A caller can compare this with
+    /// its own session start to account for delay before the first attempt.
+    public let instant: ContinuousClock.Instant
     /// Time since the previous attempt at the same socket boundary.
     /// `nil` for the first attempt.
     public let intervalSincePreviousAttempt: Duration?
 
-    init(attemptNumber: Int, sequence: UInt16, intervalSincePreviousAttempt: Duration?) {
+    init(attemptNumber: Int, sequence: UInt16, instant: ContinuousClock.Instant,
+         intervalSincePreviousAttempt: Duration?) {
         self.attemptNumber = attemptNumber
         self.sequence = sequence
+        self.instant = instant
         self.intervalSincePreviousAttempt = intervalSincePreviousAttempt
     }
 }
