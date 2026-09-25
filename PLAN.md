@@ -1,6 +1,6 @@
 # Swift Ping 库规划（PingKit）
 
-> 状态：M1–M8 已完成，当前版本 0.7.0；#39 有限发送窗口已实现，尚未发布。更新日期：2026-09-25
+> 状态：M1–M8 已完成，当前版本 0.8.0；#39 有限发送窗口已发布。更新日期：2026-09-25
 
 ## 1. 背景与现有生态
 
@@ -109,7 +109,7 @@ Ping/
      - Linux：ubuntu runner + Swift 6 工具链；先 `sudo sysctl -w net.ipv4.ping_group_range="0 2147483647"` 打开免特权 ICMP，再 `swift test`。这样 Linux 从"best-effort 未编译验证"直接升级为 CI 持续验证。
      - Glibc 分支已在 CI 编译并测试，覆盖 `SOCK_DGRAM` 枚举和常量类型差异。
    - 顺手加 LICENSE（MIT）和 README badge。
-6. ✅ **M6 首次发布**（`0.1.0` 与 GitHub Release 已发布；DocC catalog 本地构建通过；`.spi.yml` 就绪。当前最新版本为 `0.7.0`。仓库已转 public，[Swift Package Index](https://swiftpackageindex.com/gewill/PingKit) 已收录，提供兼容性构建结果和在线 API 文档；2026-09-14 核实）
+6. ✅ **M6 首次发布**（`0.1.0` 与 GitHub Release 已发布；DocC catalog 本地构建通过；`.spi.yml` 就绪。当前最新版本为 `0.8.0`。仓库已转 public，[Swift Package Index](https://swiftpackageindex.com/gewill/PingKit) 已收录，提供兼容性构建结果和在线 API 文档；2026-09-14 核实）
 7. ✅ **M7 iOS 验证**
    - ✅ CI 加 iOS 门禁：`generic/platform=iOS` 设备目标编译 + iOS 模拟器全量测试（含 loopback 集成测试，证明 ICMP dgram socket 在 iOS 运行时可用）。
    - ✅ 最小 SwiftUI demo App（`Examples/PingDemo`，xcodegen 生成工程，含 `NSLocalNetworkUsageDescription`），模拟器构建通过。
@@ -175,7 +175,7 @@ Ping/
 - **回包归属（#23）**：单播 Echo Reply 校验源地址，IPv6 link-local 同时校验 scope；缺失来源元数据不再伪造为目标地址。Linux IPv4 通过 recvfrom 保留来源，actor 不增加平台判断。差错报文校验内嵌目标地址，合法路由器差错保留；检查置于内部解析入口，不改变公共报文模型或解析 API。已识别的多播与 IPv4 有限广播目标保留首个匹配回包的既有行为，不承诺完整组播/广播探测（定向广播无法仅从地址识别）。同目标、相同标识的不同会话仍无法仅靠源地址区分。
 - **在途序号回绕（#22）**：16 位序号复用前若旧探针仍在等待，暂停单一发送循环，待旧探针终态后继续，不提前制造超时、不覆盖 pending。此边界下实际发送间隔可延长；stop/cancellation 同时唤醒等待者。超时回调携带发送代次，陈旧回调不能移除新探针。回归测试通过缩小内部序号空间驱动同一状态机，覆盖回绕、陈旧超时、停止与取消；报文仍使用 16 位序号，复用后才到达且标识完全相同的旧网络回包仍无法仅凭序号区分。
 
-## 6.9 已实现，待发布：有限发送窗口（#39）
+## 6.9 0.8.0 已发布能力：有限发送窗口（#39）
 
 - `PingConfiguration.sendDuration` 从首次发送机会起算；`sendDeadline` 让调用方在会话开始时给出绝对 `ContinuousClock.Instant`，把 DNS、socket 建立、调度或挂起耗时计入同一截止。两者互斥，默认均为 `nil` 不改变普通 Ping。`ContinuousClock` 在系统睡眠时继续计时，和用于 RTT 的 Darwin `CLOCK_UPTIME_RAW` 不同；每次 `socket.send` 前都核对截止，挂起恢复后不补发过期探测。
 - 截止仅停止新发包；已发送探测继续接收回复／超时，最长到最后一次发送后的配置 `timeout`，长采样间隔不能拖延收尾。这有意不同于 macOS `ping -t`／Linux `ping -w` 的到点退出和直接计丢包：后台诊断需要每个已发送探测的终态。`stop()` 和消费任务取消仍立即关闭 socket；`PingStatistics.lost` 会把未结算探测计入未收到回复，调用方若需显示「未知」须跟踪未配对的 `.sent` 事件。Pingman #89／#92 使用绝对截止；真机连续运行仍由 Pingman #87 验收。
