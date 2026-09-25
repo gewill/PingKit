@@ -1,5 +1,18 @@
+import Foundation
 import Testing
 @testable import PingKit
+
+private final class SteppedAttemptClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var nextSecond: UInt64 = 10
+
+    func now() -> MonotonicTimestamp {
+        lock.withLock {
+            defer { nextSecond += 1 }
+            return MonotonicTimestamp(nanoseconds: nextSecond * 1_000_000_000)
+        }
+    }
+}
 
 @Suite struct PingerTests {
     private func waitForFirstSend(_ socket: MockPingSocket) async throws {
@@ -82,6 +95,63 @@ import Testing
             return
         }
         #expect(reply.sequence == 0)
+    }
+
+    @Test func attemptTimingUsesSendBoundaryDespiteDelayedEventConsumption() async throws {
+        let clock = SteppedAttemptClock()
+        let socket = MockPingSocket(sendErrorForIndex: {
+            $0 == 1 ? .sendFailed(errno: 65) : nil
+        })
+        let pinger = Pinger(
+            host: "test.invalid",
+            configuration: PingConfiguration(
+                interval: .milliseconds(5), timeout: .milliseconds(20), count: .times(3)),
+            socketFactory: { _ in socket },
+            resolver: { _ in .ipv4(IPv4Endpoint(127, 0, 0, 1)) },
+            attemptClockNow: { clock.now() })
+
+        var timings: [PingAttemptTiming] = []
+        for try await response in pinger.responses {
+            let sequence: UInt16
+            switch response {
+            case .sent(let value), .sendFailed(let value, _): sequence = value
+            default: continue
+            }
+            if sequence == 0 {
+                // The next two sends happen while the consumer is suspended.
+                try await Task.sleep(for: .milliseconds(60))
+            }
+            let timing = try #require(await pinger.attemptTiming(at: timings.count + 1))
+            #expect(timing.sequence == sequence)
+            timings.append(timing)
+        }
+
+        #expect(timings.map(\.attemptNumber) == [1, 2, 3])
+        #expect(timings.map(\.intervalSincePreviousAttempt) == [nil, .seconds(1), .seconds(1)])
+    }
+
+    @Test func attemptTimingDisambiguatesSequenceWrapAndBoundsRetention() async throws {
+        let clock = SteppedAttemptClock()
+        let socket = MockPingSocket(autoReply: { Fixtures.replyDatagram(forRequest: $0) })
+        let pinger = Pinger(
+            host: "test.invalid",
+            configuration: PingConfiguration(
+                interval: .milliseconds(20), timeout: .seconds(1), count: .times(10),
+                bufferLimits: PingBufferLimits(events: 8)),
+            socketFactory: { _ in socket },
+            resolver: { _ in .ipv4(IPv4Endpoint(127, 0, 0, 1)) },
+            sequenceLimit: 1,
+            attemptClockNow: { clock.now() })
+
+        for try await _ in pinger.responses {}
+
+        #expect(await pinger.attemptTiming(at: 1) == nil)
+        #expect(await pinger.attemptTiming(at: 2) == nil)
+        let third = try #require(await pinger.attemptTiming(at: 3))
+        let tenth = try #require(await pinger.attemptTiming(at: 10))
+        #expect(third.sequence == 0)
+        #expect(tenth.sequence == 1)
+        #expect(tenth.intervalSincePreviousAttempt == .seconds(1))
     }
 
     @Test func sentEventPrecedesTimeout() async throws {

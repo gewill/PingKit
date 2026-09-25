@@ -72,6 +72,35 @@ interval once the network comes back. It still counts toward
 ``PingStatistics/transmitted``, matching `ping(8)`, so it surfaces as loss
 rather than disappearing from the accounting.
 
+### Measure local send-attempt spacing
+
+``Pinger/attemptTiming(at:)`` returns the interval captured immediately before
+the local socket send call. Count both `.sent` and `.sendFailed` events to get
+the one-based attempt number. The first attempt has no previous interval.
+Check the returned sequence; the attempt number disambiguates 16-bit sequence
+wraparound. Only the latest `bufferLimits.events` attempt records are retained,
+so a slow consumer must treat a missing record as unknown rather than infer
+that the probe was not sent.
+
+```swift
+var attemptNumber = 0
+for try await response in pinger.responses {
+    switch response {
+    case .sent(let sequence), .sendFailed(let sequence, _):
+        attemptNumber += 1
+        if let timing = await pinger.attemptTiming(at: attemptNumber),
+           timing.sequence == sequence {
+            print("local send-attempt interval: \(String(describing: timing.intervalSincePreviousAttempt))")
+        }
+    default:
+        break
+    }
+}
+```
+
+This is a userspace send-boundary measurement, not a kernel transmit or remote
+receive timestamp. It is unaffected by delayed `AsyncSequence` consumption.
+
 ## Configure the Run
 
 ``PingConfiguration`` carries the knobs; every one has a default.

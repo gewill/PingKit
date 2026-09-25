@@ -38,6 +38,7 @@ public actor Pinger {
     private let socketFactory: SocketFactory
     private let resolver: HostResolver
     private let clockNow: @Sendable () -> ContinuousClock.Instant
+    private let attemptClockNow: @Sendable () -> MonotonicTimestamp
     // A smaller sequence space lets tests exercise the actual wraparound
     // state machine without sending 65,536 probes.
     private let sequenceLimit: UInt16
@@ -59,6 +60,8 @@ public actor Pinger {
     private var sequenceWaiter: CheckedContinuation<Void, Never>?
 
     private var transmitted = 0
+    private var lastAttemptAt: MonotonicTimestamp?
+    private var attemptTimings: [Int: PingAttemptTiming] = [:]
     private var received = 0
     private var completed = 0
     private var rttSum = 0.0
@@ -97,7 +100,8 @@ public actor Pinger {
         socketFactory: @escaping SocketFactory,
         resolver: @escaping HostResolver,
         sequenceLimit: UInt16 = .max,
-        clockNow: @escaping @Sendable () -> ContinuousClock.Instant = { .now }
+        clockNow: @escaping @Sendable () -> ContinuousClock.Instant = { .now },
+        attemptClockNow: @escaping @Sendable () -> MonotonicTimestamp = { .now() }
     ) {
         self.host = host
         self.configuration = configuration
@@ -105,6 +109,7 @@ public actor Pinger {
         self.resolver = resolver
         self.sequenceLimit = sequenceLimit
         self.clockNow = clockNow
+        self.attemptClockNow = attemptClockNow
     }
 
     deinit {
@@ -181,6 +186,18 @@ public actor Pinger {
             averageRTT: average,
             maxRTT: maxRTT,
             stddevRTT: stddev)
+    }
+
+    /// Returns send-boundary timing for a `.sent` or `.sendFailed` event.
+    ///
+    /// Look up the one-based attempt number while consuming the response
+    /// stream, counting both attempt outcomes. The record remains available
+    /// while it is among the latest `bufferLimits.events` attempts; `nil`
+    /// means it was evicted or the number has not been attempted. Check the
+    /// returned sequence as well as the attempt number before using it.
+    /// Timing is recorded before `socket.send`, even if that call fails.
+    public func attemptTiming(at attemptNumber: Int) -> PingAttemptTiming? {
+        attemptTimings[attemptNumber]
     }
 
     // MARK: - Machinery
@@ -339,7 +356,14 @@ public actor Pinger {
             packet = ICMPv6.makeEchoRequest(identifier: identifier, sequence: sequence, payload: payload)
         }
         guard !sendingWindowElapsed else { return false }
-        let sentAt = MonotonicTimestamp.now()
+        let sentAt = attemptClockNow()
+        let attemptNumber = transmitted + 1
+        let interval = lastAttemptAt.map { sentAt.duration(since: $0) }
+        attemptTimings[attemptNumber] = PingAttemptTiming(
+            attemptNumber: attemptNumber, sequence: sequence,
+            intervalSincePreviousAttempt: interval)
+        lastAttemptAt = sentAt
+        attemptTimings.removeValue(forKey: attemptNumber - configuration.bufferLimits.events)
         do {
             try socket.send(packet)
         } catch {
