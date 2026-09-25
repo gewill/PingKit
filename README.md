@@ -72,7 +72,6 @@ let pinger = Pinger(host: "1.1.1.1", configuration: .init(
     interval: .seconds(1),
     timeout: .seconds(2),
     count: .times(5),
-    sendDuration: nil,    // use .seconds(300) for a finite sending window
     payloadSize: 56,
     timeToLive: nil,       // IPv4 TTL / IPv6 hop limit
     addressFamily: .automatic)) // follows system DNS ordering, including DNS64
@@ -105,8 +104,9 @@ packet loss in `statistics()` rather than vanishing from the aggregate; the
 `.sendFailed` event carries the `errno` for consumers that want to tell
 "never sent" from "sent but lost". So a UI can insert a pending row on
 `.sent` and update it in place, and render `.sendFailed` as a standalone
-failed row. On stop, cancellation, or stream failure, consumers
-should clear any remaining pending rows.
+failed row. On stop, cancellation, or stream failure, consumers should mark
+remaining pending rows as unknown. `statistics.lost` includes those unsettled
+probes because it is `transmitted - received`.
 
 Lifecycle rules:
 
@@ -115,10 +115,15 @@ Lifecycle rules:
 - Cancelling the consuming task stops the pinger and closes the socket.
 - If you `break` out of the loop without cancelling, call `await pinger.stop()`
   (idempotent) to release the socket deterministically.
-- `sendDuration` starts at the first send opportunity after socket setup,
-  stops new sends at a monotonic deadline, then lets probes already sent
-  reply or time out. It does not extend sampling; explicit stop or
-  cancellation still closes immediately.
+- For a finite run, use `count: .unlimited` with `sendDuration: .seconds(300)`.
+  This relative window starts at the first send opportunity after setup.
+- To share a deadline with a caller's session, capture
+  `let deadline = ContinuousClock.now + .seconds(300)` at session start and use
+  `count: .unlimited, sendDeadline: deadline`. Resolution, socket setup, and
+  scheduling then consume the same window. Set only one window option.
+- Both options use `ContinuousClock`, which advances during system sleep. At
+  the deadline, sending stops while probes already sent reply or time out.
+  Explicit stop or cancellation still closes immediately.
 
 ## IPv6 and NAT64
 

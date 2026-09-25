@@ -4,8 +4,13 @@ import Testing
 @Suite struct PingerTests {
     @Test(arguments: [
         PingConfiguration(interval: .zero),
+        PingConfiguration(interval: .seconds(Int64.max)),
         PingConfiguration(timeout: .zero),
+        PingConfiguration(timeout: .seconds(Int64.max)),
         PingConfiguration(sendDuration: .zero),
+        PingConfiguration(sendDuration: .seconds(Int64.max)),
+        PingConfiguration(sendDuration: .seconds(1), sendDeadline: .now),
+        PingConfiguration(sendDeadline: .now + .seconds(Int64(Int32.max) + 1)),
         PingConfiguration(count: .times(0)),
         PingConfiguration(payloadSize: -1),
         PingConfiguration(payloadSize: 65_508),
@@ -151,16 +156,52 @@ import Testing
         let pinger = Pinger(
             host: "test.invalid",
             configuration: PingConfiguration(
-                interval: .milliseconds(100), timeout: .seconds(3),
-                sendDuration: .seconds(2)),
+                interval: .milliseconds(1), timeout: .milliseconds(50),
+                count: .times(2), sendDuration: .seconds(10)),
             socketFactory: { _ in socket },
             resolver: { _ in .ipv4(IPv4Endpoint(127, 0, 0, 1)) },
-            sequenceLimit: 0)
+            sequenceLimit: 0,
+            clockNow: {
+                // Simulate resuming after the deadline while the timer task
+                // has not yet had a chance to run on the actor.
+                let now = ContinuousClock.now
+                return socket.sent.isEmpty ? now : now.advanced(by: .seconds(20))
+            })
 
         var events: [PingResponse] = []
         for try await event in pinger.responses { events.append(event) }
         #expect(events == [.sent(sequence: 0), .timeout(sequence: 0)])
         #expect(socket.sent.count == 1)
+    }
+
+    @Test func absoluteSendDeadlineRejectsAnOverdueFirstProbe() async throws {
+        let socket = MockPingSocket(autoReply: { Fixtures.replyDatagram(forRequest: $0) })
+        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+        let pinger = Pinger(
+            host: "test.invalid",
+            configuration: PingConfiguration(count: .times(1), sendDeadline: deadline),
+            socketFactory: { _ in socket },
+            resolver: { _ in .ipv4(IPv4Endpoint(127, 0, 0, 1)) },
+            clockNow: { deadline.advanced(by: .seconds(1)) })
+
+        var events: [PingResponse] = []
+        for try await event in pinger.responses { events.append(event) }
+        #expect(events.isEmpty)
+        #expect(socket.sent.isEmpty)
+        #expect(socket.closed)
+    }
+
+    @Test func pastAbsoluteSendDeadlineFinishesWithoutSending() async throws {
+        let socket = MockPingSocket()
+        let pinger = makePinger(
+            configuration: PingConfiguration(sendDeadline: .now - .seconds(1)),
+            socket: socket)
+
+        var events: [PingResponse] = []
+        for try await event in pinger.responses { events.append(event) }
+        #expect(events.isEmpty)
+        #expect(socket.sent.isEmpty)
+        #expect(socket.closed)
     }
 
     @Test func sendFailuresStillAdvanceAFiniteSendingWindow() async throws {
@@ -527,10 +568,14 @@ import Testing
         #expect(statistics.transmitted >= 1)
     }
 
-    @Test func cancellationStopsPinger() async throws {
+    @Test(arguments: [false, true])
+    func cancellationStopsPinger(sendWindow: Bool) async throws {
         let socket = MockPingSocket()
         let pinger = makePinger(
-            configuration: PingConfiguration(interval: .milliseconds(10), timeout: .seconds(5), count: .unlimited),
+            configuration: PingConfiguration(
+                interval: .milliseconds(10), timeout: .seconds(5),
+                count: .unlimited,
+                sendDuration: sendWindow ? .seconds(10) : nil),
             socket: socket)
 
         let consumer = Task {
@@ -545,6 +590,9 @@ import Testing
             try await Task.sleep(for: .milliseconds(5))
         }
         #expect(socket.closed)
+        let sentAfterCancellation = socket.sent.count
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(socket.sent.count == sentAfterCancellation)
     }
 
     @Test func breakingResponseIterationStopsPinger() async throws {

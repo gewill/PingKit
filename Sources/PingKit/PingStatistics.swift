@@ -17,7 +17,9 @@ public struct PingStatistics: Sendable, Equatable {
     ///
     /// Because only a matched reply increments ``received``, this covers
     /// three different fates at once: timeouts, ICMP errors, and probes the
-    /// socket refused to send.
+    /// socket refused to send. A snapshot also counts probes still in flight,
+    /// including those left unsettled by `stop()` or cancellation. Consumers
+    /// that need an "unknown" state must track unmatched `.sent` events.
     public var lost: Int { max(0, transmitted - received) }
     /// ``lost`` as a fraction of ``transmitted``; 0 before the first probe.
     public var lossRate: Double { transmitted > 0 ? Double(lost) / Double(transmitted) : 0 }

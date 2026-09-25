@@ -82,6 +82,7 @@ PingConfiguration(
     timeout: .seconds(2),        // per-probe reply deadline
     count: .times(5),            // or .unlimited
     sendDuration: nil,           // optional finite monotonic sending window
+    sendDeadline: nil,           // optional caller-aligned absolute deadline
     payloadSize: 56,             // classic default: 64-byte ICMP messages
     timeToLive: 64,              // nil keeps the system default
     addressFamily: .automatic)   // or .ipv4 / .ipv6
@@ -91,13 +92,20 @@ PingConfiguration(
 the rest of the system resolves it. An invalid combination throws
 ``PingError/invalidConfiguration`` when the run starts.
 
-For a time-bounded run, use `count: .unlimited` with `sendDuration`. The
-window starts at the first send opportunity after resolution and socket setup.
-At its monotonic deadline PingKit sends no new probe, even if a suspended send
-loop resumes late. The sequence then remains open only while previously sent
-probes reply or reach their configured `timeout`; this is not extra sampling
-time. `stop()` and consumer cancellation still close immediately, leaving any
-unsettled probes for the caller to report as unknown.
+For a time-bounded run, use `count: .unlimited` with either `sendDuration` or
+`sendDeadline`. `sendDuration` starts at the first send opportunity after
+resolution and socket setup. To align with a caller's session, capture
+`let deadline = ContinuousClock.now + .seconds(300)` when that session starts
+and pass `sendDeadline: deadline`; setup and scheduling then consume the same
+window. Both options use `ContinuousClock`, so system sleep counts toward the
+window. At the deadline PingKit sends no new probe, even if a suspended send
+loop resumes late. Previously sent probes can still reply or reach their
+configured `timeout`; this is not extra sampling time. Durations must be
+positive and at most `Int32.max` seconds; a future absolute deadline must
+be within the same bound when the run starts. A past absolute deadline sends
+nothing. `stop()` and consumer cancellation close immediately. Track unmatched
+`.sent` events if they should be shown as unknown: `statistics().lost` still
+includes them because it counts every transmission without a reply.
 
 ## Lifecycle
 

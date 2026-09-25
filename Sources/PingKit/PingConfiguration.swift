@@ -22,12 +22,20 @@ public struct PingConfiguration: Sendable {
     public var timeout: Duration
     /// How many probes to send before the response sequence finishes.
     public var count: Count
-    /// Optional finite sending window, measured with a monotonic clock from
-    /// the first send opportunity after socket setup. Once elapsed, no new
-    /// probes are sent; the sequence remains open until previous probes reply
-    /// or time out.
-    /// `nil` preserves the usual count/unlimited behavior.
+    /// Optional finite sending window, measured with `ContinuousClock` from
+    /// the first send opportunity after socket setup. System sleep counts
+    /// toward this window. Once elapsed, no new probes are sent; the sequence
+    /// remains open until previous probes reply or time out.
+    /// When both window options are `nil`, count/unlimited behavior is unchanged.
+    /// Set either this or ``sendDeadline``, not both.
     public var sendDuration: Duration?
+    /// Optional absolute sending deadline on `ContinuousClock`. Use this
+    /// when a caller must align sends with a session deadline that already
+    /// includes resolution and socket setup. System sleep counts toward the
+    /// deadline; a past deadline sends nothing. Future deadlines must be no
+    /// more than `Int32.max` seconds away when the run starts.
+    /// Set either this or ``sendDuration``, not both.
+    public var sendDeadline: ContinuousClock.Instant?
     /// Echo payload size in bytes (the classic default is 56, for 64-byte
     /// ICMP messages).
     public var payloadSize: Int
@@ -44,6 +52,7 @@ public struct PingConfiguration: Sendable {
         timeout: Duration = .seconds(2),
         count: Count = .unlimited,
         sendDuration: Duration? = nil,
+        sendDeadline: ContinuousClock.Instant? = nil,
         payloadSize: Int = 56,
         timeToLive: Int? = nil,
         addressFamily: AddressFamily = .automatic,
@@ -53,6 +62,7 @@ public struct PingConfiguration: Sendable {
         self.timeout = timeout
         self.count = count
         self.sendDuration = sendDuration
+        self.sendDeadline = sendDeadline
         self.payloadSize = payloadSize
         self.timeToLive = timeToLive
         self.addressFamily = addressFamily
@@ -60,10 +70,16 @@ public struct PingConfiguration: Sendable {
     }
 
     func validate() throws {
+        // Task.sleep and ContinuousClock.sleep convert to nanoseconds. Match
+        // the CLI's bound so public Duration values cannot trap that conversion.
+        let maximumDuration: Duration = .seconds(Int32.max)
+        let now = ContinuousClock.now
         guard bufferLimits.isValid,
-              interval > .zero,
-              timeout > .zero,
-              sendDuration.map({ $0 > .zero }) ?? true,
+              interval > .zero, interval <= maximumDuration,
+              timeout > .zero, timeout <= maximumDuration,
+              sendDuration.map({ $0 > .zero && $0 <= maximumDuration }) ?? true,
+              sendDeadline == nil || sendDuration == nil,
+              sendDeadline.map({ $0 <= now || now.duration(to: $0) <= maximumDuration }) ?? true,
               payloadSize >= 0,
               payloadSize <= 65_507,
               count.isValid,

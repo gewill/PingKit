@@ -37,6 +37,7 @@ public actor Pinger {
     private let configuration: PingConfiguration
     private let socketFactory: SocketFactory
     private let resolver: HostResolver
+    private let clockNow: @Sendable () -> ContinuousClock.Instant
     // A smaller sequence space lets tests exercise the actual wraparound
     // state machine without sending 65,536 probes.
     private let sequenceLimit: UInt16
@@ -49,7 +50,7 @@ public actor Pinger {
     private var continuation: AsyncThrowingStream<PingResponse, any Error>.Continuation?
     private var sendTask: Task<Void, Never>?
     private var sendWindowTask: Task<Void, Never>?
-    private var sendStartedAt: ContinuousClock.Instant?
+    private var activeSendDeadline: ContinuousClock.Instant?
     private var sendingFinished = false
     private var receiveTask: Task<Void, Never>?
     private var receiveContinuation: AsyncStream<SocketDatagram>.Continuation?
@@ -95,17 +96,20 @@ public actor Pinger {
         configuration: PingConfiguration,
         socketFactory: @escaping SocketFactory,
         resolver: @escaping HostResolver,
-        sequenceLimit: UInt16 = .max
+        sequenceLimit: UInt16 = .max,
+        clockNow: @escaping @Sendable () -> ContinuousClock.Instant = { .now }
     ) {
         self.host = host
         self.configuration = configuration
         self.socketFactory = socketFactory
         self.resolver = resolver
         self.sequenceLimit = sequenceLimit
+        self.clockNow = clockNow
     }
 
     deinit {
         sendTask?.cancel()
+        sendWindowTask?.cancel()
         receiveTask?.cancel()
         socket?.close()
     }
@@ -278,11 +282,13 @@ public actor Pinger {
     }
 
     private func beginSendingWindowIfNeeded() {
-        guard sendStartedAt == nil else { return }
-        let startedAt = ContinuousClock.now
-        sendStartedAt = startedAt
-        if let duration = configuration.sendDuration {
-            let deadline = startedAt.advanced(by: duration)
+        guard activeSendDeadline == nil else { return }
+        if let deadline = configuration.sendDeadline
+            ?? configuration.sendDuration.map({ clockNow().advanced(by: $0) }) {
+            activeSendDeadline = deadline
+            // An absolute deadline may have elapsed during resolution. The
+            // send loop will finish without a probe; no sleeper is needed.
+            guard clockNow() < deadline else { return }
             sendWindowTask = Task { [weak self] in
                 do {
                     try await ContinuousClock().sleep(until: deadline)
@@ -305,8 +311,8 @@ public actor Pinger {
     }
 
     private var sendingWindowElapsed: Bool {
-        guard let duration = configuration.sendDuration, let sendStartedAt else { return false }
-        return sendStartedAt.duration(to: .now) >= duration
+        guard let activeSendDeadline else { return false }
+        return clockNow() >= activeSendDeadline
     }
 
     private func sendProbe(sequence: UInt16) async -> Bool {
@@ -321,10 +327,9 @@ public actor Pinger {
         }
         guard case .running = state, !Task.isCancelled,
               let endpoint, let socket else { return false }
-        // Actor/scheduler startup may be delayed after socket activation.
-        // The finite window begins at the first actual send opportunity.
+        // The relative window begins at the first send opportunity. An
+        // absolute deadline already includes any setup or scheduling delay.
         beginSendingWindowIfNeeded()
-        guard !sendingWindowElapsed else { return false }
         let payload = ICMPv4.payloadPattern(size: configuration.payloadSize)
         let packet: [UInt8]
         switch endpoint {
