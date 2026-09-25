@@ -10,17 +10,21 @@ import Testing
         PingConfiguration(sendDuration: .zero),
         PingConfiguration(sendDuration: .seconds(Int64.max)),
         PingConfiguration(sendDuration: .seconds(1), sendDeadline: .now),
-        PingConfiguration(sendDeadline: .now + .seconds(Int64(Int32.max) + 1)),
+        PingConfiguration(sendDeadline: .now + .seconds(Int64(Int32.max) + 86_400)),
         PingConfiguration(count: .times(0)),
         PingConfiguration(payloadSize: -1),
         PingConfiguration(payloadSize: 65_508),
         PingConfiguration(timeToLive: 0),
         PingConfiguration(timeToLive: 256),
     ])
-    func invalidConfigurationIsReportedAsAnError(_ configuration: PingConfiguration) async {
+    func invalidConfigurationIsReportedAsAnError(_ input: PingConfiguration) async {
+        var configuration = input
+        // If a boundary is accidentally accepted, finish promptly instead
+        // of leaving an unlimited run stuck in the test process.
+        if configuration.count == .unlimited { configuration.count = .times(1) }
         let pinger = makePinger(
             configuration: configuration,
-            socket: MockPingSocket())
+            socket: MockPingSocket(autoReply: { Fixtures.replyDatagram(forRequest: $0) }))
 
         await #expect(throws: PingError.invalidConfiguration) {
             for try await _ in pinger.responses {}
