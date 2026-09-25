@@ -59,6 +59,8 @@ public actor Pinger {
     private var sequenceWaiter: CheckedContinuation<Void, Never>?
 
     private var transmitted = 0
+    private var lastAttemptInstant: ContinuousClock.Instant?
+    private var attemptTimings: [Int: PingAttemptTiming] = [:]
     private var received = 0
     private var completed = 0
     private var rttSum = 0.0
@@ -181,6 +183,18 @@ public actor Pinger {
             averageRTT: average,
             maxRTT: maxRTT,
             stddevRTT: stddev)
+    }
+
+    /// Returns send-boundary timing for a `.sent` or `.sendFailed` event.
+    ///
+    /// Look up the one-based attempt number while consuming the response
+    /// stream, counting both attempt outcomes. The record remains available
+    /// while it is among the latest `bufferLimits.events` attempts; `nil`
+    /// means it was evicted or the number has not been attempted. Check the
+    /// returned sequence as well as the attempt number before using it.
+    /// Timing is recorded before `socket.send`, even if that call fails.
+    public func attemptTiming(at attemptNumber: Int) -> PingAttemptTiming? {
+        attemptTimings[attemptNumber]
     }
 
     // MARK: - Machinery
@@ -339,7 +353,15 @@ public actor Pinger {
             packet = ICMPv6.makeEchoRequest(identifier: identifier, sequence: sequence, payload: payload)
         }
         guard !sendingWindowElapsed else { return false }
+        let attemptInstant = clockNow()
         let sentAt = MonotonicTimestamp.now()
+        let attemptNumber = transmitted + 1
+        let interval = lastAttemptInstant.map { $0.duration(to: attemptInstant) }
+        attemptTimings[attemptNumber] = PingAttemptTiming(
+            attemptNumber: attemptNumber, sequence: sequence, instant: attemptInstant,
+            intervalSincePreviousAttempt: interval)
+        lastAttemptInstant = attemptInstant
+        attemptTimings.removeValue(forKey: attemptNumber - configuration.bufferLimits.events)
         do {
             try socket.send(packet)
         } catch {
