@@ -2,6 +2,14 @@ import Testing
 @testable import PingKit
 
 @Suite struct PingerTests {
+    private func waitForFirstSend(_ socket: MockPingSocket) async throws {
+        let deadline = ContinuousClock.now + .seconds(60)
+        while socket.sent.isEmpty {
+            try #require(ContinuousClock.now < deadline, "first probe was not sent")
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
     @Test(arguments: [
         PingConfiguration(interval: .zero),
         PingConfiguration(interval: .seconds(Int64.max)),
@@ -561,7 +569,8 @@ import Testing
             }
             return outcomes
         }
-        try await Task.sleep(for: .milliseconds(50))
+        defer { consumer.cancel() }
+        try await waitForFirstSend(socket)
         await pinger.stop()
         await pinger.stop()
 
@@ -585,7 +594,8 @@ import Testing
         let consumer = Task {
             for try await _ in pinger.responses {}
         }
-        try await Task.sleep(for: .milliseconds(50))
+        defer { consumer.cancel() }
+        try await waitForFirstSend(socket)
         consumer.cancel()
         _ = try? await consumer.value
 
