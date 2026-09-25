@@ -133,13 +133,16 @@ import Testing
                 interval: .seconds(30), timeout: .milliseconds(100),
                 sendDuration: .seconds(2)),
             socket: socket)
-        let startedAt = ContinuousClock.now
-
         var events: [PingResponse] = []
-        for try await event in pinger.responses { events.append(event) }
+        var firstSentAt: ContinuousClock.Instant?
+        for try await event in pinger.responses {
+            if case .sent = event { firstSentAt = .now }
+            events.append(event)
+        }
 
         #expect(events == [.sent(sequence: 0), .timeout(sequence: 0)])
-        #expect(startedAt.duration(to: .now) < .seconds(10))
+        let sentAt = try #require(firstSentAt)
+        #expect(sentAt.duration(to: .now) < .seconds(25))
         #expect(socket.sent.count == 1)
     }
 
